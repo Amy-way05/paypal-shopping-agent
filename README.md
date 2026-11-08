@@ -1,4 +1,4 @@
-# PayPal Shopping Agent — [Add final app name]
+# PayPal Shopping Agent — [final app name once decided]
 
 > Apple Pay pays. PayPal shops for you.
 
