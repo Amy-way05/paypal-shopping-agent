@@ -1,0 +1,29 @@
+# Env / secrets
+.env
+*.env.local
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Data (generated, can be large — regenerate via scripts instead of committing)
+data/*.csv
+data/*.json
+!data/README.md
+
+# Models (trained artifacts — regenerate via train script)
+models/*.joblib
+models/*.pkl
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
