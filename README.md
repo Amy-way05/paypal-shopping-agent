@@ -4,7 +4,7 @@
 
 An AI agent that works before, during, and after every purchase — finding better deals, recovering money automatically, and giving merchants intelligence only PayPal's two-sided data can provide.
 
-Built for [Hackathon name] — [dates].
+Built for [Paypal Hackathon ] — [Nov 12th, 2026].
 
 ## The problem
 
