@@ -47,8 +47,8 @@ models/      ML model code + trained artifacts (joblib)
 | Name | Area | GitHub |
 | --- | --- | --- |
 | Amy | Data + AI models | [@Amy-way05](https://github.com/Amy-way05) |
-| [name] | Backend + API | |
-| [name] | Frontend | |
+| Hetav | Frontend + deployment | [@rhetav](https://github.com/rhetav) |
+| Sri (Koushik) | Backend + API | [@skkoushik453](https://github.com/skkoushik453) |
 
 ## Running locally
 
