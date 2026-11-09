@@ -1,7 +1,19 @@
 # API Contract — PayPal Shopping Agent
 
-> **Status: DRAFT v0.1** — proposed by backend (Koushik), needs review from frontend (Hetav).
+> **Status: DRAFT v0.2** — proposed by backend (Koushik), needs review from frontend (Hetav) and data (Amrutha).
 > Once agreed, backend serves these exact paths and shapes. Any change after that gets announced in Teams first.
+
+## What changed in v0.2 (vs v0.1)
+
+Aligned to the final "How the AI shopping agent works" diagram:
+
+1. **Guardian: all 4 checks are core** (price drop, overcharge, delivery watch, refund tracker), all plain rules. The scan now **acts automatically** (files claims / contacts merchant) when Agent Pass allows it.
+2. **Agent Pass:** default auto-approve is **$50**; new `max_unplanned_purchase` (**$150**) so a random $200 item is **BLOCKED**; Save For It purchases are "planned" and always ask "Buy now?"; new `autonomous_claims` toggle.
+3. **Better Deal:** alternatives now include `rating` (0–10) and `delivery_days`.
+4. **Save For It:** coupons (`best_coupon`, `final_price`); Pay Later shown any time ("Can't wait?"), not only on a deal; new demo helper to simulate a week of saving.
+5. **Savings report:** each breakdown card has `total`, `count`, and `latest` (item, merchant, date).
+6. **New `POST /api/agent/chat`:** Gemini picks and calls the tools (better deal, Agent Pass, orders, goals, scan) itself.
+7. **New `POST /api/demo/reset`:** puts demo data back to the starting state so the demo is repeatable.
 
 ## Conventions
 
@@ -14,10 +26,10 @@
 | Money | Number, USD, 2 decimals (`129.99`) |
 | Dates | ISO 8601 strings (`"2026-11-09"` or `"2026-11-09T14:30:00Z"`) |
 | IDs | Strings (`"B001"`, `"M001"`, `"G_7f3a"`) |
-| Demo users | Buyer `B001`, Merchant `M001` |
+| Demo users | Buyer `B001`, Merchant `M001` (no login) |
 | Empty data | Lists come back as `[]` with a `message` string for the empty state, never `null` |
 
-All numbers in the examples below are **examples only**. Real responses are computed from the data.
+All numbers in the examples are **examples only**. Real responses are computed from the data.
 
 ### Errors
 
@@ -30,9 +42,10 @@ Every error uses FastAPI's shape:
 | HTTP | `code` | When |
 |---|---|---|
 | 400 | `BAD_REQUEST` | Missing or invalid field |
-| 403 | `AGENT_PASS_BLOCKED` | Agent Pass rules block the action (includes `reason`) |
-| 404 | `NOT_FOUND` | Unknown buyer / goal / order / alert |
+| 403 | `AGENT_PASS_BLOCKED` | Agent Pass rules block the action (includes `decision` and `reason`) |
+| 404 | `NOT_FOUND` | Unknown buyer / goal / order / alert / offer |
 | 409 | `NEEDS_CONFIRMATION` | Agent Pass needs the user to confirm; resend with `"confirmed": true` |
+| 409 | `NOT_APPROVED` | Capture called before the buyer approved in PayPal |
 | 502 | `PAYPAL_ERROR` | PayPal Sandbox call failed |
 
 Agent Pass 403 example:
@@ -42,7 +55,7 @@ Agent Pass 403 example:
   "detail": {
     "code": "AGENT_PASS_BLOCKED",
     "decision": "BLOCK",
-    "reason": "Category 'gambling' is blocked in your Agent Pass rules"
+    "reason": "$200.00 unplanned purchase is over your $150.00 limit"
   }
 }
 ```
@@ -60,37 +73,59 @@ Agent Pass 403 example:
 
 ---
 
-## 1. Savings Dashboard (home screen)
+## 1. Savings Report (home screen)
+
+"The reason you open PayPal every day." The total only goes up.
 
 ### `GET /api/savings/{buyer_id}`
 
 ```json
 {
   "buyer_id": "B001",
-  "total_saved": 847.32,
-  "this_month": 64.10,
+  "total_saved": 847.00,
+  "this_month": 165.00,
   "breakdown": {
-    "price_drop": 312.40,
-    "overcharge": 188.92,
-    "better_deal": 236.00,
-    "save_for_it": 110.00
+    "price_drop": {
+      "label": "Price drop recovered",
+      "total": 312.40,
+      "count": 11,
+      "latest": { "item": "Headphones", "merchant_name": "SoundLab", "amount": 18.00, "date": "2026-10-29" }
+    },
+    "overcharge": {
+      "label": "Overcharge caught",
+      "total": 188.60,
+      "count": 9,
+      "latest": { "item": "Online order", "merchant_name": "ShopRight", "amount": 9.00, "date": "2026-11-02" }
+    },
+    "better_deal": {
+      "label": "Better deal found",
+      "total": 196.00,
+      "count": 23,
+      "latest": { "item": "Insoles", "merchant_name": "StrideShop", "amount": 6.00, "date": "2026-11-05" }
+    },
+    "save_for_it": {
+      "label": "Save For It discount",
+      "total": 150.00,
+      "count": 1,
+      "latest": { "item": "Laptop", "merchant_name": "TechHaven", "amount": 150.00, "date": "2026-11-04" }
+    }
   },
   "trend": [
     { "month": "2026-06", "amount": 92.10 },
     { "month": "2026-07", "amount": 140.55 },
     { "month": "2026-08", "amount": 201.30 },
-    { "month": "2026-09", "amount": 168.07 },
-    { "month": "2026-10", "amount": 181.20 },
-    { "month": "2026-11", "amount": 64.10 }
+    { "month": "2026-09", "amount": 118.05 },
+    { "month": "2026-10", "amount": 130.00 },
+    { "month": "2026-11", "amount": 165.00 }
   ],
   "recent_actions": [
     {
       "action_id": "A_102",
       "type": "price_drop",
-      "title": "Price drop refund from TechHaven",
+      "title": "Auto price-match from SoundLab",
       "amount": 18.00,
       "status": "recovered",
-      "timestamp": "2026-11-08T16:02:00Z"
+      "timestamp": "2026-10-29T16:02:00Z"
     }
   ],
   "analytics": {
@@ -102,18 +137,22 @@ Agent Pass 403 example:
     "purchases_watched": 42,
     "active_alerts": 2,
     "top_merchant": { "merchant_name": "TechHaven", "amount": 409.00 },
-    "savings_rate_pct": 5.2
+    "savings_rate_pct": 13.3
   }
 }
 ```
 
-`type` is one of `price_drop | overcharge | better_deal | save_for_it`.
-`status` is one of `detected | resolved | recovered`.
-`analytics` powers the "why you open PayPal daily" section: `purchases_watched` = purchases the Guardian is monitoring, `savings_rate_pct` = `this_month / spend_this_month × 100`.
+- `breakdown` keys are always these four. A card with no savings yet has `total: 0`, `count: 0`, `latest: null`.
+- `latest.amount` is the most recent single saving of that type; `total` is all-time. Frontend chooses which to show big on the card.
+- `this_month` = sum of savings dated in the current month.
+- `recent_actions[].type`: `price_drop | overcharge | better_deal | save_for_it | delivery | refund`. `status`: `detected | resolved | recovered`.
+- `analytics.savings_rate_pct` = `this_month / spend_this_month × 100`. `purchases_watched` = purchases the Guardian is monitoring.
 
 ---
 
 ## 2. Flow A — Better Deal Before You Pay
+
+"PayPal isn't predicting what you need. It's making sure you never overpay for what you already decided to buy."
 
 ### `POST /api/find-better-deal`
 
@@ -122,71 +161,78 @@ Request:
 ```json
 {
   "buyer_id": "B001",
-  "product_name": "Sony WH-1000XM5 Headphones",
-  "price": 349.99,
-  "category": "electronics",
-  "merchant_id": "M014"
+  "product_name": "Running Insoles",
+  "price": 24.00,
+  "category": "sports",
+  "merchant_name": "FootFirst"
 }
 ```
 
-`merchant_id` is optional.
+`merchant_name` (or `merchant_id`) is optional.
 
 Response:
 
 ```json
 {
   "your_pick": {
-    "product_name": "Sony WH-1000XM5 Headphones",
-    "price": 349.99,
-    "merchant_id": "M014",
-    "merchant_name": "GadgetGrove"
+    "product_name": "Running Insoles",
+    "price": 24.00,
+    "merchant_name": "FootFirst"
   },
   "network": {
-    "median_price": 318.50,
-    "percentile": 82,
+    "median_price": 19.50,
+    "percentile": 88,
     "overpaying": true
   },
   "alternatives": [
     {
       "product_id": "P_0231",
-      "product_name": "Sony WH-1000XM5 Headphones",
-      "price": 309.00,
+      "product_name": "Running Insoles",
+      "price": 18.00,
       "merchant_id": "M007",
-      "merchant_name": "TechHaven",
+      "merchant_name": "StrideShop",
+      "rating": 9.1,
+      "delivery_days": 2,
       "dispute_rate": 0.012,
       "on_time_rate": 0.96,
-      "savings": 40.99
+      "savings": 6.00
     }
   ],
   "best_option": "P_0231",
-  "potential_savings": 40.99,
+  "potential_savings": 6.00,
+  "source": "local_catalog",
   "agent_pass": {
     "decision": "APPROVE",
-    "reason": "Within your $400 auto-approve limit"
+    "reason": "$18.00 is under your $50.00 auto-approve limit"
   },
-  "agent_message": "You're paying more than 82% of PayPal shoppers for these. TechHaven has the same model for $309 with a 1.2% dispute rate. Want me to switch?"
+  "agent_message": "Same insoles for $18 at StrideShop: rated 9.1/10 with 2-day delivery. That's $6 less than FootFirst."
 }
 ```
 
-- `percentile`: where your price sits in the network (0–100). `overpaying` is true when above the 65th percentile.
-- `alternatives`: up to 3, sorted cheapest first, only low-dispute merchants. Empty `[]` plus `"message"` when you already have the best price.
-- `agent_pass.decision`: `APPROVE | NEEDS_CONFIRMATION | BLOCK` for buying the best option.
-- `agent_message`: written by Gemini, or a template if Gemini is unavailable.
+- `percentile`: where your price sits in the network (0–100). `overpaying` is true above the 65th percentile.
+- `alternatives`: up to 3, cheapest first, only low-dispute merchants. `rating` is 0–10. Empty `[]` plus `"message"` when you already have the best price.
+- `source`: `channel3 | local_catalog`.
+- `agent_pass`: decision for buying `best_option` (see section 4).
+- `agent_message`: Gemini, or a template if Gemini is unavailable.
 
-To buy the better option, call `POST /api/orders` (section 5) with `"source": "better_deal"`.
+To buy it: `POST /api/orders` with `"source": "better_deal"` and `"original_price": 24.00`.
 
 ---
 
 ## 3. Flow B — Save For It
 
-Goal `status` values:
+"I want this $1,200 laptop." Auto-save weekly, watch the price + coupons, buy at the perfect moment.
+
+Goal `status`:
 
 | status | Meaning |
 |---|---|
-| `saving` | Still saving toward the goal |
-| `deal_found` | Price hit an all-time low before savings finished: offer Pay in 4 / Pay Monthly |
-| `ready` | `saved_so_far >= current_price` |
+| `saving` | Still saving |
+| `deal_found` | Price hit its all-time low before savings finished (good moment for Pay Later) |
+| `ready` | `saved_so_far >= final_price`: agent asks "Buy now?" |
 | `purchased` | Bought |
+
+Pay Later options are always included ("Can't wait?"), calculated on the current `final_price`.
 
 ### `POST /api/save-for-it/create`
 
@@ -195,15 +241,15 @@ Request:
 ```json
 {
   "buyer_id": "B001",
-  "product_name": "Bose QuietComfort Ultra",
+  "product_name": "Dell XPS 14 Laptop",
   "product_id": "P_0410",
   "category": "electronics",
-  "target_price": 429.00,
-  "weekly_amount": 25.00
+  "target_price": 1200.00,
+  "weekly_amount": 50.00
 }
 ```
 
-`product_id` is optional. Response is the full goal (same shape as `status` below), `status: "saving"`.
+`product_id` optional. Response: the full goal (same shape as status), `status: "saving"`.
 
 ### `GET /api/save-for-it/status/{goal_id}`
 
@@ -211,27 +257,31 @@ Request:
 {
   "goal_id": "G_7f3a",
   "buyer_id": "B001",
-  "product_name": "Bose QuietComfort Ultra",
+  "product_name": "Dell XPS 14 Laptop",
   "category": "electronics",
-  "target_price": 429.00,
-  "current_price": 349.00,
-  "all_time_low": 349.00,
-  "weekly_amount": 25.00,
-  "saved_so_far": 150.00,
-  "progress_pct": 43,
-  "weeks_remaining": 8,
-  "status": "deal_found",
+  "merchant_name": "TechHaven",
+  "target_price": 1200.00,
+  "current_price": 1070.00,
+  "best_coupon": { "code": "TECH20", "description": "$20 off laptops", "discount": 20.00 },
+  "final_price": 1050.00,
+  "savings_vs_target": 150.00,
+  "all_time_low": 1050.00,
+  "weekly_amount": 50.00,
+  "saved_so_far": 1050.00,
+  "progress_pct": 100,
+  "weeks_remaining": 0,
+  "status": "ready",
   "price_history": [
-    { "date": "2026-10-01", "price": 429.00 },
-    { "date": "2026-10-15", "price": 399.00 },
-    { "date": "2026-11-08", "price": 349.00 }
+    { "date": "2026-07-01", "price": 1200.00 },
+    { "date": "2026-09-15", "price": 1149.00 },
+    { "date": "2026-11-04", "price": 1070.00 }
   ],
   "financing_options": [
     {
       "type": "pay_in_4",
       "label": "Pay in 4",
       "installments": 4,
-      "installment_amount": 87.25,
+      "installment_amount": 262.50,
       "frequency": "every 2 weeks",
       "interest": 0
     },
@@ -239,7 +289,7 @@ Request:
       "type": "pay_monthly_6",
       "label": "Pay Monthly",
       "installments": 6,
-      "installment_amount": 58.17,
+      "installment_amount": 175.00,
       "frequency": "monthly",
       "interest": 0
     }
@@ -247,22 +297,23 @@ Request:
   "credit_card_offer": {
     "label": "PayPal credit card",
     "cashback_pct": 3,
-    "estimated_cashback": 10.47,
+    "estimated_cashback": 31.50,
     "note": "Cashback rate to be verified against current card terms"
   },
-  "agent_message": "Your Bose headphones just hit their lowest price ever ($349, down $80). Instead of waiting 8 more weeks, you could get them now with Pay in 4: $87.25 every 2 weeks."
+  "agent_message": "Goal hit! Your laptop is $1,050 today with code TECH20: $150 under your target. Buy now?"
 }
 ```
 
-- `progress_pct` = `saved_so_far / current_price` (capped at 100).
-- `financing_options` and `credit_card_offer` are `[]` / `null` unless `status` is `deal_found` or `ready`.
+- `final_price` = `current_price − best_coupon.discount`. `best_coupon` is `null` if none applies. Coupons come from `coupons.json` ("Honey-style", simulated).
+- `savings_vs_target` = `target_price − final_price` (counts as `save_for_it` savings after purchase).
+- `progress_pct` = `saved_so_far / final_price × 100`, capped at 100.
 - `price_history` drives the sparkline.
-- Pay Later and credit card are **simulated** in Sandbox (we calculate the plan and tag the order).
+- Pay Later and the credit card are **simulated** in Sandbox: we calculate the plan and tag the order.
 
 ### `GET /api/save-for-it/goals/{buyer_id}`
 
 ```json
-{ "goals": [ { "...": "same shape as status above" } ] }
+{ "goals": [ { "...": "same shape as status" } ] }
 ```
 
 ### `POST /api/save-for-it/purchase/{goal_id}`
@@ -270,17 +321,23 @@ Request:
 Request:
 
 ```json
-{ "payment_option": "pay_in_4", "confirmed": false }
+{ "payment_option": "pay_in_4", "confirmed": true }
 ```
 
-`payment_option`: `pay_now | pay_in_4 | pay_monthly_6`.
-Runs Agent Pass first. Response is the same as `POST /api/orders` (section 5), and the goal becomes `purchased`.
+`payment_option`: `pay_now | pay_in_4 | pay_monthly_6`. Save For It purchases always need confirmation ("Buy now?" → you tap), so the first call without `confirmed: true` returns `409 NEEDS_CONFIRMATION`.
+Response: same as `POST /api/orders`. The goal becomes `purchased` after capture.
+
+### `POST /api/save-for-it/simulate-week/{goal_id}` — demo helper
+
+Moves one `weekly_amount` into the goal and re-checks price + coupons (what the daily job does), so the demo doesn't need to wait real weeks.
+
+Request (optional): `{ "weeks": 1 }`. Response: the updated goal (same shape as status).
 
 ---
 
 ## 4. Agent Pass (spending rules)
 
-Every order and every claim goes through Agent Pass first.
+Every order and every claim goes through Agent Pass first. The agent never spends without your rules or approval.
 
 ### `GET /api/agent-pass/{buyer_id}`
 
@@ -288,20 +345,24 @@ Every order and every claim goes through Agent Pass first.
 {
   "buyer_id": "B001",
   "autonomous_enabled": true,
-  "auto_approve_limit": 100.00,
+  "autonomous_claims": true,
+  "auto_approve_limit": 50.00,
+  "max_unplanned_purchase": 150.00,
   "max_daily_spend": 300.00,
-  "monthly_limit": 1000.00,
+  "monthly_limit": 2000.00,
   "blocked_categories": ["gambling"],
-  "approved_merchants": ["M007", "M012"],
-  "spent_today": 45.00,
+  "approved_merchants": [],
+  "spent_today": 18.00,
   "spent_this_month": 412.50
 }
 ```
 
+`approved_merchants: []` means any low-dispute merchant is fine.
+
 ### `PUT /api/agent-pass/{buyer_id}`
 
-Request: any subset of the editable fields (`autonomous_enabled`, `auto_approve_limit` 0–200, `max_daily_spend`, `monthly_limit`, `blocked_categories`, `approved_merchants`).
-Response: full rules object, same shape as GET.
+Request: any subset of the editable fields (`autonomous_enabled`, `autonomous_claims`, `auto_approve_limit` 0–200, `max_unplanned_purchase`, `max_daily_spend`, `monthly_limit`, `blocked_categories`, `approved_merchants`).
+Response: full rules object.
 
 ### `POST /api/agent-pass/check`
 
@@ -310,35 +371,45 @@ Request:
 ```json
 {
   "buyer_id": "B001",
-  "amount": 309.00,
+  "amount": 200.00,
   "category": "electronics",
-  "merchant_id": "M007",
-  "action": "purchase"
+  "merchant_id": "M019",
+  "action": "purchase",
+  "planned": false
 }
 ```
 
-`action`: `purchase | claim`. Response:
+- `action`: `purchase | claim`.
+- `planned`: `true` for Save For It purchases (the user set this goal), `false` otherwise.
+
+Response (always **200**, it's a preview):
 
 ```json
 {
-  "decision": "NEEDS_CONFIRMATION",
-  "reason": "$309.00 is above your $100.00 auto-approve limit",
-  "remaining_today": 255.00,
-  "remaining_this_month": 587.50
+  "decision": "BLOCK",
+  "reason": "$200.00 unplanned purchase is over your $150.00 limit",
+  "remaining_today": 282.00,
+  "remaining_this_month": 1587.50
 }
 ```
 
-Decision logic (in order):
-1. Category blocked → `BLOCK`
-2. Would exceed daily or monthly limit → `BLOCK`
-3. Autonomous purchases off, or amount above auto-approve limit, or merchant not approved → `NEEDS_CONFIRMATION`
-4. Otherwise → `APPROVE`
+**Purchase rules (checked in order):**
 
-This endpoint always returns **200** (it's a preview). The 403 / 409 errors happen on the real actions (orders, purchase, claim).
+1. Category in `blocked_categories` → `BLOCK`
+2. Not planned and `amount > max_unplanned_purchase` → `BLOCK`
+3. Would go over `monthly_limit` → `BLOCK`
+4. Not planned and would go over `max_daily_spend` → `BLOCK`
+5. Planned (Save For It) → `NEEDS_CONFIRMATION` ("Buy now?")
+6. `autonomous_enabled` off, or `amount > auto_approve_limit`, or merchant not in a non-empty `approved_merchants` → `NEEDS_CONFIRMATION`
+7. Otherwise → `APPROVE`
+
+**Claim rules** (money coming back to you): `autonomous_claims` on → `APPROVE`, off → `NEEDS_CONFIRMATION`.
+
+Demo story: insoles $18 → APPROVE · laptop $1,050 (planned) → NEEDS_CONFIRMATION · random $200 → BLOCK.
 
 ### `GET /api/agent-pass/{buyer_id}/actions`
 
-Recent agent actions log for the settings screen.
+Recent agent decisions, for the settings screen log.
 
 ```json
 {
@@ -346,11 +417,11 @@ Recent agent actions log for the settings screen.
     {
       "action_id": "AP_55",
       "action": "purchase",
-      "amount": 309.00,
+      "amount": 200.00,
       "category": "electronics",
-      "merchant_name": "TechHaven",
-      "decision": "NEEDS_CONFIRMATION",
-      "reason": "$309.00 is above your $100.00 auto-approve limit",
+      "merchant_name": "GadgetGrove",
+      "decision": "BLOCK",
+      "reason": "$200.00 unplanned purchase is over your $150.00 limit",
       "timestamp": "2026-11-09T10:12:00Z"
     }
   ]
@@ -369,21 +440,22 @@ Request:
 {
   "buyer_id": "B001",
   "product_id": "P_0231",
-  "product_name": "Sony WH-1000XM5 Headphones",
+  "product_name": "Running Insoles",
   "merchant_id": "M007",
-  "category": "electronics",
-  "amount": 309.00,
-  "original_price": 349.99,
+  "category": "sports",
+  "amount": 18.00,
+  "original_price": 24.00,
   "payment_option": "pay_now",
   "source": "better_deal",
+  "goal_id": null,
   "confirmed": false
 }
 ```
 
 - `payment_option`: `pay_now | pay_in_4 | pay_monthly_6`
-- `source`: `better_deal | save_for_it | direct`
-- `original_price` is optional; when set, `original_price - amount` counts as a `better_deal` saving after capture.
-- `confirmed`: set `true` after the user taps "Confirm" on a `NEEDS_CONFIRMATION` response.
+- `source`: `better_deal | save_for_it | agent | direct`. `save_for_it` counts as planned for Agent Pass.
+- `original_price` optional; `original_price − amount` counts as a `better_deal` saving after capture.
+- `confirmed`: `true` after the user taps "Confirm" on a `NEEDS_CONFIRMATION`.
 
 Response `201`:
 
@@ -392,19 +464,19 @@ Response `201`:
   "order_id": "5O190127TN364715T",
   "status": "CREATED",
   "approve_url": "https://www.sandbox.paypal.com/checkoutnow?token=5O190127TN364715T",
-  "amount": 309.00,
+  "amount": 18.00,
   "payment_option": "pay_now",
   "installment_plan": null,
-  "agent_pass": { "decision": "APPROVE", "reason": "User confirmed" }
+  "agent_pass": { "decision": "APPROVE", "reason": "$18.00 is under your $50.00 auto-approve limit" }
 }
 ```
 
-For `pay_in_4` / `pay_monthly_6`, `installment_plan` is filled:
+For `pay_in_4` / `pay_monthly_6`, `installment_plan` is filled (simulated):
 
 ```json
 "installment_plan": {
   "installments": 4,
-  "installment_amount": 77.25,
+  "installment_amount": 262.50,
   "frequency": "every 2 weeks",
   "schedule": ["2026-11-09", "2026-11-23", "2026-12-07", "2026-12-21"]
 }
@@ -412,7 +484,7 @@ For `pay_in_4` / `pay_monthly_6`, `installment_plan` is filled:
 
 Errors: `403 AGENT_PASS_BLOCKED`, `409 NEEDS_CONFIRMATION`, `502 PAYPAL_ERROR`.
 
-**Frontend flow:** open `approve_url` (new tab or popup) → user logs in with the **sandbox buyer** account and approves → call capture.
+**Frontend flow:** open `approve_url` (popup / new tab) → user logs in with the **sandbox buyer** account and approves → call capture.
 
 ### `POST /api/orders/{order_id}/capture`
 
@@ -423,33 +495,40 @@ No body. Response:
   "order_id": "5O190127TN364715T",
   "status": "COMPLETED",
   "capture_id": "3C679366HH908993F",
-  "amount": 309.00,
-  "saved": 40.99,
-  "message": "+$40.99 saved!"
+  "amount": 18.00,
+  "saved": 6.00,
+  "message": "+$6.00 saved!"
 }
 ```
 
-`saved` drives the "+$X saved!" animation (0 if no saving). Error `409` with code `NOT_APPROVED` if the buyer hasn't approved in PayPal yet.
+`saved` drives the "+$X saved!" animation (0 if none). `409 NOT_APPROVED` if the buyer hasn't approved yet.
 
 ### `GET /api/orders/{order_id}`
 
 ```json
-{ "order_id": "5O190127TN364715T", "status": "APPROVED", "amount": 309.00, "payment_option": "pay_now" }
+{ "order_id": "5O190127TN364715T", "status": "APPROVED", "amount": 18.00, "payment_option": "pay_now" }
 ```
 
 `status`: `CREATED | APPROVED | COMPLETED`.
 
 ---
 
-## 6. Flow C — Post-Purchase Guardian
+## 6. Flow C — Post-Purchase Guardian (4 autonomous actions)
 
-Alert `type` values: `price_drop` and `overcharge` (must-have); `late_refund` and `delivery_delay` (stretch).
-Alert `status`: `detected → resolved (claim filed) → recovered (money back)`.
+"PayPal never stops working." All four checks are **rules on the data**, not ML:
 
-Detection is **rules on the data**, not ML:
-- `price_drop`: merchant dropped the price within 7 days of purchase → recoverable = paid − new price
-- `overcharge`: amount charged > listed price by more than 5% (tax buffer) → recoverable = charged − listed price
-- `late_refund`: refund requested, not received after 7+ days
+| `type` | Rule | Agent action | `recoverable_amount` |
+|---|---|---|---|
+| `price_drop` | Merchant price fell within 7 days of purchase | Auto price-match (refund the difference) | paid − new price |
+| `overcharge` | Charged > order total by more than 5% (tax buffer) | Flag + auto-dispute | charged − order total |
+| `delivery_delay` | No delivery by the promised date | Auto-contact merchant | 0 (time, not money) |
+| `late_refund` | Refund not received after the merchant's promised window | Auto-escalate | refund amount |
+
+Alert `status`: `detected → resolved (action taken) → recovered (money back)`. `delivery_delay` ends at `resolved` (or `recovered` if it gets delivered).
+
+**Autonomous:** after detection, each alert goes through Agent Pass (`action: "claim"`). If `APPROVE`, the agent acts right away (status `resolved`, `action_taken` filled). If `NEEDS_CONFIRMATION`, it stays `detected` and the user taps Claim.
+
+**Recovery:** purchases made through our app have a real Sandbox capture, so price-drop/overcharge recoveries are **real Sandbox refunds**. Historical (generated) purchases have no capture, so their recovery is simulated (`recovery_method: "simulated"`).
 
 ### `POST /api/post-purchase/scan/{buyer_id}`
 
@@ -461,7 +540,7 @@ Starts the scan in the background. Response `202`:
 
 ### `GET /api/post-purchase/results/{buyer_id}`
 
-Poll every 3 seconds until `scan_status` is `complete`.
+Poll every 3 seconds until `scan_status` is `complete`. Alerts appear as each check finishes, and statuses move forward as actions/recoveries happen, so the counter can tick up live.
 
 ```json
 {
@@ -469,77 +548,119 @@ Poll every 3 seconds until `scan_status` is `complete`.
   "checks": {
     "price_drop": "complete",
     "overcharge": "complete",
-    "late_refund": "complete",
-    "delivery_delay": "skipped"
+    "delivery_delay": "complete",
+    "late_refund": "complete"
   },
   "alerts": [
     {
       "alert_id": "AL_301",
       "type": "price_drop",
-      "title": "Price dropped on your Instant Pot",
-      "details": "You paid $99.00 on Nov 2. HomeNest dropped it to $81.00 on Nov 6.",
+      "title": "Price drop on your headphones",
+      "details": "You paid $89.00 on Tuesday. SoundLab dropped it to $71.00 on Thursday.",
       "transaction_id": "T_08812",
-      "merchant_id": "M021",
-      "merchant_name": "HomeNest",
-      "product_name": "Instant Pot Duo 7-in-1",
-      "purchase_date": "2026-11-02",
-      "amount_paid": 99.00,
-      "reference_price": 81.00,
+      "merchant_name": "SoundLab",
+      "product_name": "Wireless Headphones",
+      "purchase_date": "2026-10-27",
+      "amount_paid": 89.00,
+      "reference_price": 71.00,
       "recoverable_amount": 18.00,
-      "status": "detected",
+      "status": "recovered",
+      "action_taken": "Auto price-match requested. You did nothing.",
+      "recovery_method": "paypal_refund",
+      "paypal_reference": "8MC585209K746392H",
       "detected_at": "2026-11-09T10:15:00Z"
     },
     {
       "alert_id": "AL_302",
       "type": "overcharge",
-      "title": "Overcharged by StyleLoop",
-      "details": "Listed at $60.00, you were charged $72.40 (20.7% over).",
+      "title": "Overcharged by ShopRight",
+      "details": "Order total $45.00, you were charged $54.00. $9.00 gap.",
       "transaction_id": "T_09107",
-      "merchant_id": "M033",
-      "merchant_name": "StyleLoop",
-      "product_name": "Denim Jacket",
-      "purchase_date": "2026-10-28",
-      "amount_paid": 72.40,
-      "reference_price": 60.00,
-      "recoverable_amount": 12.40,
-      "status": "detected",
+      "merchant_name": "ShopRight",
+      "product_name": "Online order",
+      "purchase_date": "2026-11-02",
+      "amount_paid": 54.00,
+      "reference_price": 45.00,
+      "recoverable_amount": 9.00,
+      "status": "resolved",
+      "action_taken": "Flagged and auto-disputed.",
+      "recovery_method": "simulated",
+      "paypal_reference": null,
       "detected_at": "2026-11-09T10:15:01Z"
+    },
+    {
+      "alert_id": "AL_303",
+      "type": "delivery_delay",
+      "title": "Your order is late",
+      "details": "Promised 3-day shipping. Day 5, nothing arrived.",
+      "transaction_id": "T_09230",
+      "merchant_name": "HomeNest",
+      "product_name": "Desk Lamp",
+      "purchase_date": "2026-11-04",
+      "promised_date": "2026-11-07",
+      "days_late": 2,
+      "recoverable_amount": 0,
+      "status": "resolved",
+      "action_taken": "Auto-contacted merchant.",
+      "recovery_method": null,
+      "paypal_reference": null,
+      "detected_at": "2026-11-09T10:15:02Z"
+    },
+    {
+      "alert_id": "AL_304",
+      "type": "late_refund",
+      "title": "Refund overdue from StyleLoop",
+      "details": "Merchant said 5–7 days. Day 10, no refund.",
+      "transaction_id": "T_08744",
+      "merchant_name": "StyleLoop",
+      "product_name": "Denim Jacket (returned)",
+      "purchase_date": "2026-10-20",
+      "refund_requested_date": "2026-10-30",
+      "days_overdue": 3,
+      "recoverable_amount": 39.99,
+      "status": "resolved",
+      "action_taken": "Agent auto-escalated.",
+      "recovery_method": "simulated",
+      "paypal_reference": null,
+      "detected_at": "2026-11-09T10:15:03Z"
     }
   ],
-  "total_recoverable": 30.40,
-  "total_recovered": 0.00,
+  "total_recoverable": 66.99,
+  "total_recovered": 18.00,
   "message": null
 }
 ```
 
-`scan_status`: `idle | running | complete`. Alerts appear as each check finishes, so the feed can fill in live. When nothing is found: `"alerts": []` with a `message`.
+`scan_status`: `idle | running | complete`. No issues found: `"alerts": []` with a `message`.
 
 ### `POST /api/post-purchase/claim/{alert_id}`
 
-Request:
+For alerts left at `detected` (autonomous claims off). Request:
 
 ```json
-{ "confirmed": false }
+{ "confirmed": true }
 ```
 
-Runs Agent Pass (`action: "claim"`), then files the refund/dispute in Sandbox. Response:
+Runs Agent Pass (`action: "claim"`), then takes the action. Response:
 
 ```json
 {
   "alert_id": "AL_301",
-  "claim_id": "C_4410",
   "status": "resolved",
+  "action_taken": "Auto price-match requested.",
   "paypal_reference": "8MC585209K746392H",
   "recoverable_amount": 18.00,
-  "message": "Refund request for $18.00 filed with HomeNest. We'll track it until it lands."
+  "message": "Price-match request for $18.00 filed with SoundLab. We'll track it until it lands."
 }
 ```
 
-When the sandbox refund completes, the alert's `status` becomes `recovered` and the amount is added to `/api/savings`.
+When money comes back, the alert becomes `recovered` and the amount is added to `/api/savings`.
 
 ---
 
 ## 7. Merchant Side ("For Your Business")
+
+"PayPal knows your customer better than you do." Every buyer transaction + outcome feeds merchant intelligence.
 
 ### `GET /api/merchant/dashboard/{merchant_id}`
 
@@ -548,20 +669,24 @@ When the sandbox refund completes, the alert's `status` becomes `recovered` and 
   "merchant_id": "M001",
   "merchant_name": "TechHaven",
   "summary": {
-    "at_risk_customers": 37,
-    "recoverable_revenue": 12480.00,
-    "offers_sent": 5
+    "at_risk_customers": 340,
+    "recoverable_revenue": 48210.00,
+    "offers_sent": 5,
+    "offers_redeemed": 2,
+    "win_back_rate_pct": 40,
+    "revenue_won_back": 342.00
   },
   "churn_risk": [
     {
       "customer_id": "B214",
-      "customer_name": "Jordan Lee",
+      "customer_name": "Sarah Kim",
       "churn_probability": 0.87,
       "risk_tier": "high",
       "days_since_purchase": 74,
       "total_spend": 1240.50,
       "order_count": 9,
-      "last_category": "electronics"
+      "last_category": "electronics",
+      "offer_status": null
     }
   ],
   "cross_sell": [
@@ -580,9 +705,10 @@ When the sandbox refund completes, the alert's `status` becomes `recovered` and 
 }
 ```
 
-- `churn_risk`: sorted by `churn_probability` descending. `risk_tier`: `high (>= 0.7) | medium (0.4–0.7) | low (< 0.4)`.
+- `churn_risk`: sorted by `churn_probability` desc. `risk_tier`: `high (>= 0.7) | medium (0.4–0.7) | low (< 0.4)`.
+- `offer_status`: `null | sent | redeemed | ignored`.
+- `recoverable_revenue`: yearly spend of at-risk customers.
 - `cross_sell` is a stretch goal and may be `[]`.
-- `recoverable_revenue`: sum of yearly spend of at-risk customers.
 
 ### `POST /api/merchant/send-offer`
 
@@ -592,7 +718,7 @@ Request:
 { "merchant_id": "M001", "customer_id": "B214", "discount_pct": 15 }
 ```
 
-`discount_pct` is optional (backend picks one from the risk tier).
+`discount_pct` optional (backend picks from risk tier).
 
 Response:
 
@@ -600,9 +726,9 @@ Response:
 {
   "offer_id": "O_9001",
   "customer_id": "B214",
-  "customer_name": "Jordan Lee",
+  "customer_name": "Sarah Kim",
   "discount_pct": 15,
-  "message": "Hi Jordan, we miss you at TechHaven! Here's 15% off your next electronics order, valid for 14 days.",
+  "message": "15% off your next order, Sarah! We miss you at TechHaven. Valid for 14 days.",
   "message_source": "gemini",
   "invoice_id": "INV2-ABCD-1234-EFGH-5678",
   "invoice_status": "SENT",
@@ -610,8 +736,8 @@ Response:
 }
 ```
 
-- `message_source`: `gemini | template` (template when Gemini is down).
-- `invoice_id` / `invoice_status` come from PayPal Sandbox Invoicing. If invoicing fails, `invoice_status: "FAILED"` and the offer is still recorded.
+- `message_source`: `gemini | template`.
+- `invoice_id` / `invoice_status` from PayPal Sandbox Invoicing. If invoicing fails: `invoice_status: "FAILED"`, offer still recorded.
 
 ### `POST /api/merchant/offer-outcome/{offer_id}` — customer returns loop
 
@@ -637,15 +763,64 @@ Response:
 }
 ```
 
-The merchant dashboard `summary` also gets these fields from the logged outcomes:
+For the demo this can be a "Simulate customer response" button. Retraining is an offline script (Amrutha).
+
+---
+
+## 8. AI Agent (Gemini picks the tools)
+
+One chat endpoint where Gemini decides which tools to call: the same logic as the endpoints above, wrapped as agent tools. This is what makes the AI "the agent," not just a text writer.
+
+Tools the agent can call: `find_better_deal`, `check_agent_pass`, `create_order`, `create_goal`, `get_goal_status`, `scan_purchases`, `get_savings`.
+
+### `POST /api/agent/chat`
+
+Request:
 
 ```json
-"offers_redeemed": 2,
-"win_back_rate_pct": 40,
-"revenue_won_back": 342.00
+{
+  "buyer_id": "B001",
+  "message": "I'm about to buy running insoles for $24 at FootFirst",
+  "session_id": null
+}
 ```
 
-For the demo, the outcome can be triggered with a "Simulate customer response" button. The retrain itself is a script Amrutha runs (`feedback_rows_logged` shows how much new data is waiting).
+Response:
+
+```json
+{
+  "session_id": "CH_51c2",
+  "reply": "Found the same insoles for $18 at StrideShop (rated 9.1/10, 2-day delivery). That's under your $50 auto-approve limit, so I've created the order: approve it in PayPal and you'll save $6.",
+  "reply_source": "gemini",
+  "tool_calls": [
+    { "tool": "find_better_deal", "summary": "Best option $18.00 at StrideShop (save $6.00)" },
+    { "tool": "check_agent_pass", "summary": "APPROVE: under $50.00 auto-approve limit" },
+    { "tool": "create_order", "summary": "Sandbox order 5O190127TN364715T created" }
+  ],
+  "cards": [
+    { "type": "better_deal", "data": { "...": "same shape as find-better-deal response" } },
+    { "type": "order", "data": { "...": "same shape as POST /api/orders response" } }
+  ],
+  "pending_confirmation": null
+}
+```
+
+- `tool_calls`: what the agent did, in order (show as "agent steps" in the UI).
+- `cards`: structured results the frontend can render with the existing components. `type`: `better_deal | order | goal | agent_pass | savings | scan`.
+- `pending_confirmation`: when Agent Pass says `NEEDS_CONFIRMATION`, this holds what's waiting, e.g. `{ "action": "create_order", "amount": 1050.00, "reason": "Save For It purchase: Buy now?" }`. The user confirms by replying "yes" (same `session_id`) or with the normal endpoint.
+- `reply_source`: `gemini | template`. If Gemini is down, the backend runs the obvious tool for the message and answers with a template.
+
+---
+
+## 9. Demo helpers
+
+### `POST /api/demo/reset`
+
+Resets goals, alerts, savings, orders log, and Agent Pass rules for the demo users back to the seeded starting state. No body. Response:
+
+```json
+{ "status": "reset", "buyer_id": "B001", "merchant_id": "M001" }
+```
 
 ---
 
@@ -654,15 +829,16 @@ For the demo, the outcome can be triggered with a "Simulate customer response" b
 | Method | Path | Screen |
 |---|---|---|
 | GET | `/health` | — |
-| GET | `/api/savings/{buyer_id}` | Savings dashboard |
+| GET | `/api/savings/{buyer_id}` | Savings report |
 | POST | `/api/find-better-deal` | Flow A |
 | POST | `/api/save-for-it/create` | Flow B |
 | GET | `/api/save-for-it/status/{goal_id}` | Flow B |
 | GET | `/api/save-for-it/goals/{buyer_id}` | Flow B |
 | POST | `/api/save-for-it/purchase/{goal_id}` | Flow B |
+| POST | `/api/save-for-it/simulate-week/{goal_id}` | Flow B (demo) |
 | GET | `/api/agent-pass/{buyer_id}` | Agent Pass settings |
 | PUT | `/api/agent-pass/{buyer_id}` | Agent Pass settings |
-| POST | `/api/agent-pass/check` | Flow A / B / C indicator |
+| POST | `/api/agent-pass/check` | Agent Pass indicator (A / B / C) |
 | GET | `/api/agent-pass/{buyer_id}/actions` | Agent Pass settings |
 | POST | `/api/orders` | Flow A / B |
 | POST | `/api/orders/{order_id}/capture` | Flow A / B |
@@ -673,12 +849,20 @@ For the demo, the outcome can be triggered with a "Simulate customer response" b
 | GET | `/api/merchant/dashboard/{merchant_id}` | Merchant dashboard |
 | POST | `/api/merchant/send-offer` | Merchant dashboard |
 | POST | `/api/merchant/offer-outcome/{offer_id}` | Merchant dashboard (returns loop) |
+| POST | `/api/agent/chat` | Agent chat |
+| POST | `/api/demo/reset` | Demo |
 
 ## Open questions for review
 
 1. **Hetav:** does every screen have what it needs? Anything missing or named awkwardly?
-2. **Hetav:** OK with opening `approve_url` in a popup/new tab for PayPal approval, then calling capture?
-3. **Amrutha:** churn output columns: can you produce `customer_id, churn_probability, days_since_purchase, total_spend, order_count`? Do transactions have `listed_price` vs `amount_charged` and a price-change date for the rules?
-4. **Team:** confirm the PayPal credit card cashback % before it goes in the demo.
-5. **Amrutha:** delivery delay is in our pitch but marked stretch here. Will the delay model be ready? If yes, `delivery_delay` alerts become must-have with fields `delay_probability`, `risk_level`, `promised_date`.
-6. **Team:** "Customer returns loop" is planned as outcome logging plus an offline retrain script (not live retraining). OK?
+2. **Hetav:** OK opening `approve_url` in a popup / new tab, then calling capture?
+3. **Hetav:** savings cards: show `latest.amount` (like the diagram: "$18, Headphones, Oct 29") or `total`? Note the diagram's numbers don't add up ("This month: $54" but the Nov cards sum to $165). The app will show real computed values, so the video must match the app, not the diagram.
+4. **Hetav:** want an agent chat box (section 8) in the UI? It's the strongest "meaningful AI" proof for judges.
+5. **Amrutha:** data columns needed by the rules:
+   - transactions: `transaction_id, buyer_id, merchant_id, product_name, category, purchase_date, order_total, amount_charged, promised_delivery_date, delivered_date, refund_requested_date, refund_promised_days, refund_received_date, refund_amount`
+   - price_changes: `merchant_id, product_name, change_date, old_price, new_price`
+   - products: `product_id, product_name, category, price, merchant_id, rating (0–10), delivery_days`
+   - coupons: `code, description, discount (or pct), category / merchant_id, expires`
+   - churn output: `customer_id, customer_name, merchant_id, churn_probability, days_since_purchase, total_spend, order_count, last_category`
+6. **Team:** confirm the PayPal credit card cashback % before it goes in the demo.
+7. **Team, "Built with" footer:** only list what we actually use. Coupons are "Honey-style (simulated)", not the Honey API. Channel3 only if it works. LangChain + Agent Toolkit only if the agent endpoint ends up using them (backend will try them for section 8 and report back).
