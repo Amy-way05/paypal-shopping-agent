@@ -63,7 +63,7 @@ def _build_features(txns: pd.DataFrame, merchants: pd.DataFrame) -> pd.DataFrame
     # Transaction-level features (these vary within a merchant, giving
     # the model within-merchant signal to learn from)
     df["purchase_date_dt"] = pd.to_datetime(df["purchase_date"])
-    df["day_of_week"] = df["purchase_date_dt"].dt.dayofweek  # 0=Mon
+    df["day_of_week"] = df["purchase_date_dt"].dt.day_of_week  # 0=Mon
     df["is_weekend_order"] = (df["day_of_week"] >= 5).astype(int)
     df["month"] = df["purchase_date_dt"].dt.month
     # Holiday season (Nov-Dec) = more delays
