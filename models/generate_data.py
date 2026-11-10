@@ -170,6 +170,7 @@ def make_products(rng: random.Random, merchants: pd.DataFrame) -> list[dict]:
         ("TechHaven", "Sony WH-1000XM5 Headphones"): 349.99,
         ("TechHaven", "Bose QuietComfort Ultra"): 429.00,
         ("HomeNest", "Instant Pot Duo 7-in-1"): 99.00,
+        ("HomeNest", "Ninja Air Fryer"): 119.99,
         ("StyleLoop", "Denim Jacket"): 60.00,
     }
     name_to_merchant = {m["merchant_name"]: m["merchant_id"] for m in PINNED_MERCHANTS}
@@ -246,6 +247,14 @@ def make_transactions_and_price_changes(rng: random.Random, np_rng: np.random.Ge
         dict(product_key=("StyleLoop", "Denim Jacket"),
              customer_id="B001", days_ago=12, order_total=60.00, amount_charged=72.40,
              delivered_late=False, refund_requested=False),
+        # Late refund: B001 requested refund 10 days ago, still nothing back
+        dict(product_key=("TechHaven", "Bose QuietComfort Ultra"),
+             customer_id="B001", days_ago=10, order_total=429.00, amount_charged=429.00,
+             delivered_late=False, refund_requested=True),
+        # Delivery delay: B001's order promised in 2 days, now 5 days late
+        dict(product_key=("HomeNest", "Ninja Air Fryer"),
+             customer_id="B001", days_ago=7, order_total=119.99, amount_charged=119.99,
+             delivered_late=True, refund_requested=False),
     ]
     reverse_pinned = {v: k for k, v in pinned_ids.items()}
 
