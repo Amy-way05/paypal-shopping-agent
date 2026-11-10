@@ -222,6 +222,12 @@ def make_transactions_and_price_changes(rng: random.Random, np_rng: np.random.Ge
     merchants_idx = merchants.set_index("merchant_id")
     n_buyers = 300
     buyer_ids = [DEMO_BUYER] + [f"B{str(i).zfill(3)}" for i in range(2, n_buyers + 1)]
+    # Power-law buyer weights: most buyers have few transactions, a handful
+    # are heavy shoppers. Exponent 0.45 gives a realistic long tail
+    # (many with 5-15 txns, some with 80+) for the churn model's RFM features.
+    buyer_weights = np.array([1.0 / (i + 1) ** 0.45 for i in range(len(buyer_ids))])
+    buyer_weights[0] = np.median(buyer_weights)  # B001 gets median weight (~30 txns)
+    buyer_weights /= buyer_weights.sum()
 
     transactions = []
     price_changes = []
@@ -286,7 +292,7 @@ def make_transactions_and_price_changes(rng: random.Random, np_rng: np.random.Ge
 
     n_remaining = N_TRANSACTIONS - len(transactions)
     for _ in range(n_remaining):
-        buyer = rng.choice(buyer_ids)
+        buyer = np_rng.choice(buyer_ids, p=buyer_weights)
         product = products_df.sample(1, random_state=rng.randint(0, 1_000_000)).iloc[0]
         merchant = merchants_idx.loc[product.merchant_id]
         days_ago = rng.randint(1, TXN_WINDOW_DAYS)
@@ -305,7 +311,7 @@ def make_transactions_and_price_changes(rng: random.Random, np_rng: np.random.Ge
         # noisy delay: not a clean rule, so the delay *model* has to learn a
         # real pattern instead of memorizing "always late = delayed"
         base_actual = promised_days + (rng.randint(3, 10) if is_delayed else rng.randint(-1, 1))
-        noise = np_rng.normal(0, 1.2)
+        noise = np_rng.normal(0, 0.8)  # reduced from 1.2 so fewer non-delayed txns bleed over threshold
         actual_days = max(0, round(base_actual + noise))
 
         refund_requested = rng.random() < 0.10
@@ -329,6 +335,7 @@ def make_transactions_and_price_changes(rng: random.Random, np_rng: np.random.Ge
                     "price_change_id": f"PC_{pc_id:04d}", "product_id": product.product_id,
                     "merchant_id": product.merchant_id, "old_price": order_total,
                     "new_price": new_price, "change_date": change_date.strftime("%Y-%m-%d"),
+                    "transaction_id": f"T_{txn_id - 1:05d}",  # ties this drop to one specific purchase
                 })
                 pc_id += 1
 
