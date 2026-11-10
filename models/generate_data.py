@@ -287,6 +287,7 @@ def make_transactions_and_price_changes(rng: random.Random, np_rng: np.random.Ge
                 "price_change_id": f"PC_{pc_id:04d}", "product_id": pid_,
                 "merchant_id": row.merchant_id, "old_price": d["order_total"],
                 "new_price": new_price, "change_date": change_date.strftime("%Y-%m-%d"),
+                "transaction_id": f"T_{txn_id - 1:05d}",  # ties to the demo txn just added
             })
             pc_id += 1
 
