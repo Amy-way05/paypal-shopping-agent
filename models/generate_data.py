@@ -365,7 +365,48 @@ def make_transactions_and_price_changes(rng: random.Random, np_rng: np.random.Ge
                 })
                 pc_id += 1
 
-    return pd.DataFrame(transactions), pd.DataFrame(price_changes)
+    # --- Churn simulation ---
+    # Create tiered churn behavior so the model learns from MULTIPLE features
+    # (order count, spend, category breadth), not just one threshold.
+    txn_df = pd.DataFrame(transactions)
+    txn_df["purchase_date_dt"] = pd.to_datetime(txn_df["purchase_date"])
+
+    pair_stats = txn_df.groupby(["customer_id", "merchant_id"]).agg(
+        count=("transaction_id", "count"),
+        spend=("amount_charged", "sum"),
+        cats=("category", "nunique"),
+    ).reset_index()
+
+    spend_median = pair_stats["spend"].median()
+
+    # Compute churn probability per pair based on engagement profile
+    # Lower engagement → higher churn probability → bigger date shift
+    churn_rs = random.Random(rng.randint(0, 100000))
+    shift_map = {}
+    for _, row in pair_stats.iterrows():
+        if row.customer_id == "B001":
+            continue  # protect demo buyer
+        # Churn score: 0 (loyal) to 1 (will churn)
+        count_score = max(0, 1 - row["count"] / 5)  # 1 order → 0.8, 5+ → 0
+        spend_score = max(0, 1 - row.spend / (spend_median * 2))  # low spend → high
+        cat_score = max(0, 1 - row.cats / 3)  # single category → higher churn
+        churn_score = 0.5 * count_score + 0.3 * spend_score + 0.2 * cat_score
+        # Probabilistic: churn_score determines likelihood of shifting
+        if churn_rs.random() < churn_score * 0.85:
+            shift = int(60 + churn_score * 120)  # worse engagement → bigger shift
+            shift_map[(row.customer_id, row.merchant_id)] = shift
+
+    new_transactions = []
+    for t_row in transactions:
+        pair = (t_row["customer_id"], t_row["merchant_id"])
+        if pair in shift_map:
+            old_date = pd.to_datetime(t_row["purchase_date"])
+            shifted = old_date - timedelta(days=shift_map[pair])
+            t_row = dict(t_row)
+            t_row["purchase_date"] = shifted.strftime("%Y-%m-%d")
+        new_transactions.append(t_row)
+
+    return pd.DataFrame(new_transactions), pd.DataFrame(price_changes)
 
 
 def main():
