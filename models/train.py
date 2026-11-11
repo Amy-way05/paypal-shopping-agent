@@ -18,6 +18,11 @@ from churn_predictor import train as train_churn
 from constants import RANDOM_SEED
 
 
+def _json_default(o):
+    """numpy scalars (e.g. numpy.bool_ from meets_target) -> plain Python for json."""
+    return o.item() if hasattr(o, "item") else str(o)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train all ML models")
     parser.add_argument("--data-dir", default="../data", help="Path to data directory")
@@ -92,10 +97,10 @@ def main():
 
     metrics_path = Path("metrics.json")
     with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
+        json.dump(metrics, f, indent=2, default=_json_default)
 
     print(f"Metrics saved to {metrics_path}")
-    print(json.dumps(metrics, indent=2))
+    print(json.dumps(metrics, indent=2, default=_json_default))
     print()
     print("=" * 50)
     print("DONE — all models trained, metrics logged")

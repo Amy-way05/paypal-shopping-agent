@@ -224,7 +224,7 @@ def run(buyer_id: str, data_dir: str = "../data",
             "type": "delivery_delay",
             "title": f"Delivery risk from {merchant_name}",
             "details": (
-                f"{row.product_name} — promised by {promised_date.strftime('%b %-d')}, "
+                f"{row.product_name} — promised by {promised_date:%b} {promised_date.day}, "
                 f"but {merchant_name} delivers late {round((1 - row.merchant_on_time_rate) * 100)}% "
                 f"of the time. {prob * 100:.0f}% chance of delay."
             ),

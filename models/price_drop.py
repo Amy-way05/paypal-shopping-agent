@@ -74,9 +74,9 @@ def run(buyer_id: str, data_dir: str = "../data") -> list[dict]:
             "title": f"Price dropped on your {row.product_name}",
             "details": (
                 f"You paid ${row.amount_charged:.2f} on "
-                f"{row.purchase_date.strftime('%b %-d')}. "
+                f"{row.purchase_date:%b} {row.purchase_date.day}. "
                 f"{merchant_name} dropped it to ${row.new_price:.2f} on "
-                f"{row.change_date.strftime('%b %-d')}."
+                f"{row.change_date:%b} {row.change_date.day}."
             ),
             "merchant_id": row.merchant_id,
             "merchant_name": merchant_name,

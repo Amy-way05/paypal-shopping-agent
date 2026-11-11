@@ -1,0 +1,27 @@
+{
+  "delay_predictor": {
+    "model": "GradientBoostingClassifier",
+    "auc": 0.7973,
+    "precision": 0.5616,
+    "recall": 0.1608,
+    "target_auc": 0.75,
+    "meets_target": true,
+    "note": "on synthetic data"
+  },
+  "churn_predictor": {
+    "model": "GradientBoostingClassifier + recency adjustment",
+    "auc": 0.7601,
+    "precision": 0.8671,
+    "recall": 0.9796,
+    "target_auc": 0.7,
+    "meets_target": true,
+    "note": "on synthetic data, time-split validation"
+  },
+  "rule_based_detectors": {
+    "price_drop": "rule: merchant dropped price within 7 days of purchase",
+    "overcharge": "rule: amount_charged > order_total * 1.05",
+    "refund_tracker": "rule: refund requested, not received or 7+ days overdue",
+    "overpayment": "stats: percentile rank against network median + product search",
+    "note": "These are rules, not ML models. Reported honestly."
+  }
+}
