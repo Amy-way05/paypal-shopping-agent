@@ -1,7 +1,7 @@
 """Agent Pass rules engine: the decision logic from API.md section 4.
 
 `decide()` is real logic (pure function). Where the rules are stored is a
-separate concern: in-memory for now (see mock_data.STATE), SQLite in Step 4.
+separate concern: in-memory runtime state (see state.STATE).
 """
 
 APPROVE = "APPROVE"

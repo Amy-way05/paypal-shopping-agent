@@ -3,7 +3,9 @@
 Run from the backend/ folder:
     uvicorn main:app --reload --port 8000
 """
+import logging
 import os
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -14,9 +16,21 @@ from fastapi.responses import JSONResponse
 load_dotenv()
 
 from routers import agent, agent_pass, buyer, demo, merchant, orders  # noqa: E402
+from services import llm, models_adapter, paypal_client  # noqa: E402
 
-app = FastAPI(title="PayPal Shopping Agent API", version="0.2.0",
-              description="Contract: API.md v0.2. Endpoints marked MOCK in code return example data.")
+logging.basicConfig(level=logging.INFO)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # data/ and *.joblib are gitignored: build them on first start, then warm the caches.
+    models_adapter.ensure_ready()
+    models_adapter.warm_up()
+    yield
+
+
+app = FastAPI(title="PayPal Shopping Agent API", version="0.3.0", lifespan=lifespan,
+              description="Contract: API.md v0.3. Data from models/ (synthetic), payments via PayPal Sandbox.")
 
 # Comma-separated list in .env; defaults to the Vite dev server.
 origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
@@ -46,8 +60,10 @@ def health():
         "status": "ok",
         "service": "paypal-shopping-agent",
         "paypal_env": "sandbox",
-        "paypal_configured": bool(os.getenv("PAYPAL_CLIENT_ID") and os.getenv("PAYPAL_SECRET")),
-        "gemini_configured": bool(os.getenv("GEMINI_API_KEY") and os.getenv("GEMINI_MODEL")),
+        "paypal_configured": paypal_client.enabled(),
+        "gemini_configured": llm.enabled(),
+        "gemini_models": llm.models() if llm.enabled() else [],
+        "data_as_of": models_adapter.DATA_TODAY.isoformat(),
     }
 
 

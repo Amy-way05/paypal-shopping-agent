@@ -1,7 +1,19 @@
 # API Contract — PayPal Shopping Agent
 
-> **Status: DRAFT v0.2** — proposed by backend (Koushik), needs review from frontend (Hetav) and data (Amrutha).
-> Once agreed, backend serves these exact paths and shapes. Any change after that gets announced in Teams first.
+> **Status: v0.3 (LIVE)**: every endpoint below is real. Data comes from Amrutha's models (synthetic dataset in `data/`), payments go through PayPal **Sandbox**, messages come from Gemini with a template fallback.
+> Any change gets announced in Teams first.
+
+## What changed in v0.3 (vs v0.2): additive only, no field removed or renamed
+
+1. **Demo merchant is now `M007` (TechHaven)**, matching `data/merchants.csv`. `M001` is "Northside Electronics". `POST /api/demo/reset` returns `merchant_id: "M007"`.
+2. **No more mock numbers.** Savings, better deal, Guardian alerts, churn and cross-sell are computed from `data/` via `backend/services/models_adapter.py`. Example values below are illustrative; the real ones differ.
+3. **Orders are real PayPal Sandbox orders.** The buyer must open `approve_url` and log in with a **sandbox personal account** before `capture`; capturing earlier returns **409 `NOT_APPROVED`**. New field `paypal_mode`: `"sandbox"` or `"simulated"` (simulated only when PayPal is switched off).
+4. **Better deal = same product, other stores.** Free text is matched to the catalog (`"sony headphones"` → `"Sony WH-1000XM5 Headphones"`); new field `matched_product` (`null` if the item isn't in the catalog → `alternatives: []` + `message`). `rating` is a 0–10 trust score computed from the merchant's on-time and dispute rates.
+5. **Savings:** total = price drops + overcharges + better deals + Save For It. **Late refunds are not counted as savings** (it's the buyer's own money); when recovered they show in `recent_actions` with type `refund_recovered`. New field `data_as_of`. Unknown buyer → **404**.
+6. **Guardian:** alert IDs look like `AL_00002P`. Alerts can include `merchant_id`, and delivery alerts can include `delay_probability` (from the ML delay model). `recovery_method` is `"simulated"` for purchases in the synthetic history (they have no real PayPal capture to refund).
+7. **Save For It:** new field `price_source`: `"catalog"` (priced from `products.json` + best merchant coupon), `"your_target"` (not in catalog), or `"demo_seed"` (the demo laptop goal `G_7f3a`).
+8. **Merchant:** churn rows add `avg_order_value`; cross-sell rows add `pair_count`. `send-offer` adds `invoice_error`; `invoice_id` is `null` and `invoice_status: "SIMULATED"` until Invoicing is enabled on the PayPal app. `message_source` is the Gemini model name or `"template"`. Unknown merchant/customer → 404.
+9. **Agent chat:** `reply_source` is the Gemini model used, or `"template"` when Gemini is unavailable. `pending_confirmation` = `{tool, reason, args}`. To confirm, `POST /api/orders` with `args` (already has `confirmed: true`).
 
 ## What changed in v0.2 (vs v0.1)
 
@@ -26,7 +38,7 @@ Aligned to the final "How the AI shopping agent works" diagram:
 | Money | Number, USD, 2 decimals (`129.99`) |
 | Dates | ISO 8601 strings (`"2026-11-09"` or `"2026-11-09T14:30:00Z"`) |
 | IDs | Strings (`"B001"`, `"M001"`, `"G_7f3a"`) |
-| Demo users | Buyer `B001`, Merchant `M001` (no login) |
+| Demo users | Buyer `B001`, Merchant `M007` TechHaven (no login) |
 | Empty data | Lists come back as `[]` with a `message` string for the empty state, never `null` |
 
 All numbers in the examples are **examples only**. Real responses are computed from the data.
@@ -666,7 +678,7 @@ When money comes back, the alert becomes `recovered` and the amount is added to 
 
 ```json
 {
-  "merchant_id": "M001",
+  "merchant_id": "M007",
   "merchant_name": "TechHaven",
   "summary": {
     "at_risk_customers": 340,
@@ -715,7 +727,7 @@ When money comes back, the alert becomes `recovered` and the amount is added to 
 Request:
 
 ```json
-{ "merchant_id": "M001", "customer_id": "B214", "discount_pct": 15 }
+{ "merchant_id": "M007", "customer_id": "B214", "discount_pct": 15 }
 ```
 
 `discount_pct` optional (backend picks from risk tier).
@@ -819,7 +831,7 @@ Response:
 Resets goals, alerts, savings, orders log, and Agent Pass rules for the demo users back to the seeded starting state. No body. Response:
 
 ```json
-{ "status": "reset", "buyer_id": "B001", "merchant_id": "M001" }
+{ "status": "reset", "buyer_id": "B001", "merchant_id": "M007" }
 ```
 
 ---

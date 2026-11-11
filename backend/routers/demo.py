@@ -1,7 +1,7 @@
 """Demo helpers (API.md section 9)."""
 from fastapi import APIRouter
 
-import mock_data as m
+import state as m
 
 router = APIRouter(prefix="/api/demo", tags=["Demo"])
 

@@ -2,15 +2,16 @@
 to gate every order and claim."""
 from fastapi import APIRouter
 
-import mock_data as m
+import state as m
 from errors import api_error
 from schemas import AgentPassCheck, AgentPassUpdate
 from services import agent_pass as ap
+from services import models_adapter as data
 
 router = APIRouter(prefix="/api/agent-pass", tags=["Agent Pass"])
 
 
-# ---- helpers (storage is in-memory # MOCK until Step 4) ----
+# ---- helpers ----
 
 def get_rules(buyer_id):
     if buyer_id not in m.STATE["rules"]:
@@ -19,7 +20,12 @@ def get_rules(buyer_id):
 
 
 def get_spend(buyer_id):
-    return m.STATE["spend"].setdefault(buyer_id, {"today": 0.0, "month": 0.0})
+    """Month-to-date spend from the buyer's purchase history + what the agent bought this session."""
+    s = m.STATE["spend"].get(buyer_id)
+    if s is None:
+        month = data.buyer_spend(buyer_id)["this_month"] if data.buyer_exists(buyer_id) else 0.0
+        s = m.STATE["spend"][buyer_id] = {"today": 0.0, "month": month}
+    return s
 
 
 def record_spend(buyer_id, amount):

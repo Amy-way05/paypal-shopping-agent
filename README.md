@@ -25,10 +25,10 @@ PayPal processes $1.79 trillion a year but nobody thinks about it the moment mon
 
 ## Tech stack
 
-- **LLM / Agent:** Gemini 2.0 Flash, direct function calling
-- **Backend:** FastAPI + SQLite + SQLAlchemy
-- **Payments:** PayPal Sandbox + Agent Toolkit
-- **ML:** scikit-learn (Isolation Forest, logistic regression, random forest)
+- **LLM / Agent:** Gemini Flash (google-genai SDK) with function calling; model fallback chain + template fallback so the demo never breaks
+- **Backend:** FastAPI (in-memory session state, resettable via `POST /api/demo/reset`)
+- **Payments:** PayPal REST **Sandbox** only: Orders v2 (create/capture), Refunds, Invoicing
+- **ML:** scikit-learn GradientBoosting for delivery-delay and churn prediction; price drop, overcharge, refund and overpayment checks are plain rules (see `models/metrics.json`)
 - **Product data:** Local catalog (Channel3 if viable)
 - **Frontend:** React (Vite) + Tailwind + AG Grid + Recharts
 - **Deploy:** Render
@@ -60,6 +60,11 @@ pip install -r requirements.txt
 cp .env.example .env   # fill in your keys
 uvicorn main:app --reload
 ```
+- First start generates `data/` and trains the models (~30 s); later starts reuse them.
+- API docs: http://localhost:8000/docs. The contract is in [API.md](API.md).
+- Tests (no PayPal/Gemini calls): `python -m pytest -q`
+- PayPal check: `python scripts/paypal_smoke_test.py` (creates a $1 **sandbox** order)
+- To pay an order in the demo, open its `approve_url` and log in with a **sandbox personal account** (developer.paypal.com → Testing tools → Sandbox accounts), then call capture.
 
 ### Frontend
 ```bash
