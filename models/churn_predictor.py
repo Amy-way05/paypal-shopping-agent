@@ -194,7 +194,7 @@ def run(merchant_id: str, data_dir: str = "../data",
 
     results = []
     for i, (_, row) in enumerate(rfm.iterrows()):
-        prob = round(float(probas[i]), 2)
+        prob = round(min(float(probas[i]), 0.99), 2)  # cap at 0.99, never show 1.0
         tier = _risk_tier(prob)
 
         if prob < risk_cutoff:

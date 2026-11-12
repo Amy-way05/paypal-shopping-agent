@@ -57,6 +57,7 @@ PRODUCT_CATALOG = {
         ("Kindle Paperwhite", 139.99),
         ("Bose QuietComfort Ultra", 429.00),
         ("Dell 27\" Monitor", 289.00),
+        ("Dell XPS 14 Laptop", 1199.99),
     ],
     "home": [
         ("Instant Pot Duo 7-in-1", 99.00),
@@ -82,6 +83,7 @@ PRODUCT_CATALOG = {
         ("Yoga Mat", 34.99),
         ("Adjustable Dumbbells", 149.00),
         ("Resistance Bands Set", 19.99),
+        ("Running Insoles", 24.00),
     ],
     "books": [
         ("Bestseller Hardcover", 27.99),
@@ -123,6 +125,8 @@ PINNED_MERCHANTS = [
      "dispute_rate": 0.065, "on_time_rate": 0.82, "avg_delivery_days": 5},
     {"merchant_id": "M001", "merchant_name": "Northside Electronics", "category": "electronics",
      "dispute_rate": 0.035, "on_time_rate": 0.89, "avg_delivery_days": 3},
+    {"merchant_id": "M042", "merchant_name": "StrideShop", "category": "sporting_goods",
+     "dispute_rate": 0.012, "on_time_rate": 0.96, "avg_delivery_days": 2},
 ]
 DEMO_BUYER = "B001"
 
@@ -169,9 +173,11 @@ def make_products(rng: random.Random, merchants: pd.DataFrame) -> list[dict]:
     pinned_products = {
         ("TechHaven", "Sony WH-1000XM5 Headphones"): 349.99,
         ("TechHaven", "Bose QuietComfort Ultra"): 429.00,
+        ("TechHaven", "Dell XPS 14 Laptop"): 1199.99,
         ("HomeNest", "Instant Pot Duo 7-in-1"): 99.00,
         ("HomeNest", "Ninja Air Fryer"): 119.99,
         ("StyleLoop", "Denim Jacket"): 60.00,
+        ("StrideShop", "Running Insoles"): 18.00,
     }
     name_to_merchant = {m["merchant_name"]: m["merchant_id"] for m in PINNED_MERCHANTS}
     pinned_ids = {}
