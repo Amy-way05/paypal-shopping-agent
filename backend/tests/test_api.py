@@ -43,14 +43,16 @@ def test_unknown_buyer_404():
 # ---- better deal ----
 
 def test_better_deal_same_product():
-    j = c.post("/api/find-better-deal", json={"buyer_id": "B001", "product_name": "sony headphones",
-                                              "price": 349.99, "category": "electronics",
-                                              "merchant_id": "M007"}).json()
-    assert j["matched_product"] == "Sony WH-1000XM5 Headphones"
+    j = c.post("/api/find-better-deal", json={"buyer_id": "B001", "product_name": "running insoles",
+                                              "price": 24, "category": "sports",
+                                              "merchant_id": "M038"}).json()
+    assert j["matched_product"] == "Running Insoles"
     assert j["alternatives"] and all(a["product_name"] == j["matched_product"] for a in j["alternatives"])
-    assert all(a["merchant_id"] != "M007" for a in j["alternatives"])
+    assert all(a["merchant_id"] != "M038" for a in j["alternatives"])
     best = j["alternatives"][0]
-    assert j["potential_savings"] == round(349.99 - best["price"], 2)
+    assert best["merchant_name"] == "StrideShop" and best["price"] == 18.0
+    assert j["potential_savings"] == round(24 - best["price"], 2)
+    assert j["agent_pass"]["decision"] == "APPROVE"
     assert {"rating", "delivery_days"} <= set(best)
 
 
