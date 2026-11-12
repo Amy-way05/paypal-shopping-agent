@@ -1,4 +1,4 @@
-# API Contract — PayPal Shopping Agent
+# API Contract — Nexus by PayPal
 
 > **Status: v0.3 (LIVE)**: every endpoint below is real. Data comes from Amrutha's models (synthetic dataset in `data/`), payments go through PayPal **Sandbox**, messages come from Gemini with a template fallback.
 > Any change gets announced in Teams first.
@@ -87,7 +87,7 @@ Agent Pass 403 example:
 ### `GET /health`
 
 ```json
-{ "status": "ok", "service": "paypal-shopping-agent", "paypal_env": "sandbox",
+{ "status": "ok", "service": "nexus-by-paypal", "paypal_env": "sandbox",
   "paypal_configured": true, "gemini_configured": true }
 ```
 

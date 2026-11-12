@@ -1,4 +1,4 @@
-# PayPal Shopping Agent — [final app name once decided]
+# Nexus by PayPal
 
 > Apple Pay pays. PayPal shops for you.
 

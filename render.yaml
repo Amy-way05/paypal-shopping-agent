@@ -1,7 +1,7 @@
 # Render blueprint for the backend API. Secrets are set in the Render dashboard, not here.
 services:
   - type: web
-    name: paypal-shopping-agent-api
+    name: nexus-by-paypal-api
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
@@ -29,7 +29,7 @@ services:
   # Frontend: static site (no cold start). Set VITE_API_BASE_URL in the dashboard to the API service's public URL,
   # then set the API's FRONTEND_URL and CORS_ORIGINS to this site's URL.
   - type: web
-    name: paypal-shopping-agent-web
+    name: nexus-by-paypal-web
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npx vite build

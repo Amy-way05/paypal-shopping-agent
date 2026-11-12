@@ -1,5 +1,5 @@
-// App name is a placeholder until the team picks one (task: Branding + polish).
-export const APP_NAME = 'PayPal Shopping Agent'
+// Shown in the header, the browser tab (also set in index.html) and screen-reader labels.
+export const APP_NAME = 'Nexus by PayPal'
 
 // Demo users from the API contract (no login).
 export const DEMO_BUYER_ID = 'B001'

@@ -95,7 +95,7 @@ def create_order(amount, description, custom_id=None, return_url=None, cancel_ur
     if return_url:  # application_context keeps status CREATED + an "approve" link
         body["application_context"] = {"return_url": return_url, "cancel_url": cancel_url or return_url,
                                        "user_action": "PAY_NOW", "shipping_preference": "NO_SHIPPING",
-                                       "brand_name": "PayPal Shopping Agent"}
+                                       "brand_name": "Nexus by PayPal"}
     o = _call("POST", "/v2/checkout/orders", body)
     return o["id"], o["status"], _link(o, "approve")
 

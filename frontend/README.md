@@ -60,5 +60,5 @@ For the demo, log in as the sandbox buyer in that browser beforehand.
 - Offers: the backend reports `invoice_status: "SIMULATED"` until PayPal Invoicing is enabled; the UI says so instead of claiming an invoice was sent.
 - Better deal only works for products in the catalog; anything else shows "Not in our catalog yet".
 - AG Grid row grouping is an Enterprise feature; the churn table uses tier filter chips instead.
-- App name is a placeholder: `APP_NAME` in `src/lib/constants.ts`.
+- App name (Nexus by PayPal): `APP_NAME` in `src/lib/constants.ts`, plus `<title>` in `index.html`.
 - Demo reset: footer link "Reset demo data" (calls `POST /api/demo/reset`).

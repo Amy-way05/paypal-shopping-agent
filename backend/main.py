@@ -1,4 +1,4 @@
-"""FastAPI entry point for the PayPal Shopping Agent backend.
+"""FastAPI entry point for the Nexus by PayPal backend.
 
 Run from the backend/ folder:
     uvicorn main:app --reload --port 8000
@@ -30,7 +30,7 @@ async def lifespan(app):
     yield
 
 
-app = FastAPI(title="PayPal Shopping Agent API", version="0.3.0", lifespan=lifespan,
+app = FastAPI(title="Nexus by PayPal API", version="0.3.0", lifespan=lifespan,
               description="Contract: API.md v0.3. Data from models/ (synthetic), payments via PayPal Sandbox.")
 
 # Comma-separated list in .env; defaults to the Vite dev server.
@@ -60,7 +60,7 @@ def health():
     """Liveness check (also used by the UptimeRobot keep-alive on Render)."""
     return {
         "status": "ok",
-        "service": "paypal-shopping-agent",
+        "service": "nexus-by-paypal",
         "paypal_env": "sandbox",
         "paypal_configured": paypal_client.enabled(),
         "gemini_configured": llm.enabled(),

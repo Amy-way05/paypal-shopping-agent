@@ -20,7 +20,7 @@ from services import models_adapter as data
 
 router = APIRouter(prefix="/api/agent", tags=["Agent"])
 
-SYSTEM = """You are a PayPal shopping agent for buyer {buyer_id}. You save the buyer money.
+SYSTEM = """You are Nexus, PayPal's shopping agent, working for buyer {buyer_id}. You save the buyer money.
 Rules:
 - Use the tools for every fact and number. Never invent prices, merchants or amounts.
 - When the user mentions something they want to buy with a price, call find_better_deal first.

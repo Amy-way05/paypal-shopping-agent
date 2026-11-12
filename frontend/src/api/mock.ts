@@ -862,7 +862,7 @@ function chat(body: { buyer_id: string; message: string; session_id: string | nu
 type Handler = (m: RegExpExecArray, body: any) => unknown
 
 const routes: [Method, RegExp, Handler][] = [
-  ['GET', /^\/health$/, () => ({ status: 'ok', service: 'paypal-shopping-agent', paypal_env: 'sandbox', paypal_configured: true, gemini_configured: true })],
+  ['GET', /^\/health$/, () => ({ status: 'ok', service: 'nexus-by-paypal', paypal_env: 'sandbox', paypal_configured: true, gemini_configured: true })],
 
   ['GET', /^\/api\/savings\/([^/]+)$/, () => structuredClone(S.savings)],
 
