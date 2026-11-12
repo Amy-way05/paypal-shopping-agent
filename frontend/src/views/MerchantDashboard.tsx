@@ -35,6 +35,9 @@ interface GridContext {
 
 type Tier = 'all' | RiskTier
 
+// "Let PayPal handle it" sends this many offers at once. More than this makes the demo wait (each offer is written by the LLM).
+const MAX_BULK = 5
+
 /** What actually happened to the PayPal invoice. The backend says SIMULATED until Invoicing is enabled on the PayPal app. */
 function invoiceNote(offer: OfferSent): string {
   if (offer.invoice_status === 'SENT') return 'PayPal sent the invoice.'
@@ -188,17 +191,16 @@ export default function MerchantDashboard() {
       toast({ kind: 'info', title: 'Nobody to send to', body: 'Everyone in view already has an offer.' })
       return
     }
+    const batch = targets.slice(0, MAX_BULK)
+    const waiting = targets.length - batch.length
     setBulkBusy(true)
-    const offers: OfferSent[] = []
-    for (const row of targets) {
-      const o = await sendOne(row)
-      if (o) offers.push(o)
-    }
+    const results = await Promise.all(batch.map((row) => sendOne(row)))
+    const offers = results.filter((o): o is OfferSent => o !== null)
     const sent = offers.length
     setBulkBusy(false)
     gridApi.current?.deselectAll()
     if (sent > 0) {
-      toast({ kind: 'success', title: `Sent ${sent} ${sent === 1 ? 'offer' : 'offers'}`, body: bulkNote(offers) })
+      toast({ kind: 'success', title: `Sent ${sent} ${sent === 1 ? 'offer' : 'offers'}`, body: waiting > 0 ? `${bulkNote(offers)} ${waiting} more ${waiting === 1 ? 'is' : 'are'} still waiting. Run it again for the next batch.` : bulkNote(offers) })
       void reload()
     }
   }
@@ -298,7 +300,7 @@ export default function MerchantDashboard() {
               </Button>
               <Button small loading={bulkBusy} disabled={bulkTargets === 0} onClick={() => void letPayPalHandleIt()}>
                 <Icon name="bolt" className="h-4 w-4" />
-                Let PayPal handle it{bulkTargets > 0 ? ` (${bulkTargets})` : ''}
+                Let PayPal handle it{bulkTargets > 0 ? ` (${Math.min(bulkTargets, MAX_BULK)})` : ''}
               </Button>
             </div>
           }

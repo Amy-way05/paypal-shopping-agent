@@ -315,8 +315,7 @@ export interface ChurnRow {
   order_count: number
   last_category: string
   offer_status: OfferStatus
-  // Not in the contract yet. Needed to log an outcome after a reload.
-  offer_id?: string | null
+  offer_id?: string | null // null until an offer is sent (API v0.3.1)
   avg_order_value?: number
 }
 

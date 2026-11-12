@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api } from '../api'
 import { errorMessage } from '../api/errors'
 import { DEMO_BUYER_ID } from '../lib/constants'
@@ -23,6 +23,9 @@ interface Msg {
   failed?: boolean
 }
 
+// Orders paid from the chat. Kept above the cards so closing and reopening the drawer doesn't offer to pay twice.
+const PaidContext = createContext<{ paid: Record<string, number>; markPaid: (key: string, saved: number) => void }>({ paid: {}, markPaid: () => {} })
+
 const SUGGESTIONS = ["I'm about to buy running insoles for $24 at FootFirst", 'Scan my purchases', 'How much have I saved?']
 
 export function AgentChat({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -39,6 +42,7 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
   const inputRef = useRef<HTMLInputElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const nextId = useRef(1)
+  const [paid, setPaid] = useState<Record<string, number>>({})
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 50)
@@ -84,6 +88,7 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
   const lastAgent = [...messages].reverse().find((m) => m.role === 'agent')
 
   return (
+    <PaidContext.Provider value={{ paid, markPaid: (key, saved) => setPaid((p) => ({ ...p, [key]: saved })) }}>
     <div className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label="Ask the agent">
       <div className="absolute inset-0 bg-ink/40" onClick={onClose} aria-hidden="true" />
       <aside className="absolute inset-y-0 right-0 flex w-full animate-slidein flex-col bg-white shadow-2xl sm:w-[420px]">
@@ -128,6 +133,7 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
         </div>
       </aside>
     </div>
+    </PaidContext.Provider>
   )
 }
 
@@ -275,7 +281,9 @@ function CardView({ card, onClose }: { card: AgentCard; onClose: () => void }) {
 function OrderCard({ order }: { order: OrderCreated }) {
   const toast = useToast()
   const { checkout, dialog, busy } = usePayPalCheckout()
-  const [paid, setPaid] = useState<{ saved: number } | null>(null)
+  const { paid: paidMap, markPaid } = useContext(PaidContext)
+  const paidSaved = paidMap[order.order_id]
+  const paid = paidSaved !== undefined ? { saved: paidSaved } : null
   const [burst, setBurst] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -285,7 +293,7 @@ function OrderCard({ order }: { order: OrderCreated }) {
       // The agent already created this order, so there is nothing to create here: just approve and capture.
       const outcome = await checkout(async () => order)
       if (outcome.status === 'captured') {
-        setPaid({ saved: outcome.capture.saved })
+        markPaid(order.order_id, outcome.capture.saved)
         if (outcome.capture.saved > 0) setBurst(outcome.capture.saved)
         toast({ kind: 'success', title: outcome.capture.message })
       }
@@ -324,17 +332,20 @@ function OrderCard({ order }: { order: OrderCreated }) {
 function PendingCard({ pending }: { pending: NonNullable<AgentChatResponse['pending_confirmation']> }) {
   const toast = useToast()
   const { checkout, dialog, busy } = usePayPalCheckout()
-  const [paid, setPaid] = useState<{ saved: number } | null>(null)
+  const { paid: paidMap, markPaid } = useContext(PaidContext)
   const [burst, setBurst] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const args = pending.args as CreateOrderRequest
+  const key = `pending:${args.product_id ?? args.product_name}:${args.amount}`
+  const paidSaved = paidMap[key]
+  const paid = paidSaved !== undefined ? { saved: paidSaved } : null
 
   async function confirm() {
     setError(null)
     try {
       const outcome = await checkout(() => api.createOrder({ ...args, confirmed: true }))
       if (outcome.status === 'captured') {
-        setPaid({ saved: outcome.capture.saved })
+        markPaid(key, outcome.capture.saved)
         if (outcome.capture.saved > 0) setBurst(outcome.capture.saved)
         toast({ kind: 'success', title: outcome.capture.message })
       }

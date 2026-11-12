@@ -7,7 +7,7 @@ React (Vite) + TypeScript + Tailwind + Recharts + AG Grid. Two tabs: **For You**
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local    # already included in the zip; edit as needed
+cp .env.example .env.local    # talks to the real backend; set VITE_USE_MOCKS=true for sample data
 npm run dev                   # http://localhost:5173
 ```
 

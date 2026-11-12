@@ -231,7 +231,7 @@ function seed() {
     orders: {} as Record<string, MockOrder>,
     scan: null as null | { id: string; startedAt: number; claimedAt: Record<string, number> },
     appliedAlerts: new Set<string>(),
-    churn: CHURN_SEED.map((c) => ({ ...c })),
+    churn: CHURN_SEED.map((c) => ({ ...c, offer_id: null as string | null })),
     merchant: { offersSent: 5, offersRedeemed: 2, revenueWonBack: 342 },
     offers: {} as Record<string, string>, // offer_id -> customer_id
     sessions: {} as Record<string, { pending: null | { productId: string; name: string; merchantId: string; merchantName: string; category: string; amount: number; original: number } }>,
@@ -459,6 +459,7 @@ function createOrder(body: CreateOrderRequest): OrderCreated {
     payment_option: body.payment_option,
     installment_plan: installmentPlan(body.payment_option, body.amount),
     agent_pass: { decision: res.decision, reason: res.reason },
+    paypal_mode: 'sandbox',
   }
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from './api'
 import { errorMessage } from './api/errors'
 import { AgentChat } from './components/AgentChat'
@@ -144,7 +144,15 @@ function Shell() {
 }
 
 function StatusPill() {
-  const { data, error, loading } = useAsync(() => api.health())
+  const { data, error, loading, reload } = useAsync(() => api.health())
+
+  // Keep checking: every few seconds while the backend is down (so the pill recovers if it starts late), slowly once healthy.
+  useEffect(() => {
+    if (USE_MOCKS) return
+    const t = setInterval(() => void reload(), error || !data ? 4000 : 30000)
+    return () => clearInterval(t)
+  }, [error, data, reload])
+
   if (USE_MOCKS) {
     return (
       <span className="rounded-full bg-pay-soft px-3 py-1 text-xs font-semibold text-pay-dark" title="Screens are using built-in sample data. Set VITE_USE_MOCKS=false to use the backend.">

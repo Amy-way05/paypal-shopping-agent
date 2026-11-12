@@ -53,7 +53,6 @@ export default function AgentPassSettings() {
   const saved = rules.data as AgentPassRules
   const dirty = JSON.stringify(draft) !== JSON.stringify(toDraft(saved))
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => (d ? { ...d, [key]: value } : d))
-  const num = (v: string) => Math.max(0, Number(v.replace(/[^0-9.]/g, '')) || 0)
 
   async function save() {
     if (!draft) return
@@ -118,13 +117,13 @@ export default function AgentPassSettings() {
 
           <div className="grid gap-4 sm:grid-cols-3">
             <Field label="Biggest unplanned purchase" hint="Over this, the agent says no.">
-              <MoneyInput value={draft.max_unplanned_purchase} onChange={(v) => set('max_unplanned_purchase', num(v))} />
+              <MoneyInput value={draft.max_unplanned_purchase} onCommit={(n) => set('max_unplanned_purchase', n)} />
             </Field>
             <Field label="Daily spending limit">
-              <MoneyInput value={draft.max_daily_spend} onChange={(v) => set('max_daily_spend', num(v))} />
+              <MoneyInput value={draft.max_daily_spend} onCommit={(n) => set('max_daily_spend', n)} />
             </Field>
             <Field label="Monthly spending limit">
-              <MoneyInput value={draft.monthly_limit} onChange={(v) => set('monthly_limit', num(v))} />
+              <MoneyInput value={draft.monthly_limit} onCommit={(n) => set('monthly_limit', n)} />
             </Field>
           </div>
 
@@ -223,11 +222,32 @@ export default function AgentPassSettings() {
   )
 }
 
-function MoneyInput({ value, onChange }: { value: number; onChange: (v: string) => void }) {
+/** Keeps its own text while typing, so "12.", "12.5" and an empty field all work. The number is committed as soon as the text is valid. */
+function MoneyInput({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
+  const [text, setText] = useState(String(value))
+
+  // Follow outside changes (Discard, presets) but never overwrite what the user is typing.
+  useEffect(() => {
+    setText((t) => (t !== '' && Number(t) === value ? t : String(value)))
+  }, [value])
+
   return (
     <div className="relative">
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">$</span>
-      <input className={cx(inputClass, 'pl-6')} inputMode="decimal" value={String(value)} onChange={(e) => onChange(e.target.value)} />
+      <input
+        className={cx(inputClass, 'pl-6')}
+        inputMode="decimal"
+        value={text}
+        onChange={(e) => {
+          const v = e.target.value
+          if (!/^\d*\.?\d{0,2}$/.test(v)) return
+          setText(v)
+          if (v !== '' && v !== '.') onCommit(Number(v))
+        }}
+        onBlur={() => {
+          if (text === '' || text === '.') setText(String(value))
+        }}
+      />
     </div>
   )
 }
@@ -306,7 +326,7 @@ function RuleTester({ onChecked }: { onChecked: () => void }) {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Amount">
-          <MoneyInput value={Number(amount) || 0} onChange={(v) => setAmount(v.replace(/[^0-9.]/g, ''))} />
+          <MoneyInput value={Number(amount) || 0} onCommit={(n) => setAmount(String(n))} />
         </Field>
         <Field label="Category">
           <select className={inputClass} value={category} onChange={(e) => setCategory(e.target.value)}>

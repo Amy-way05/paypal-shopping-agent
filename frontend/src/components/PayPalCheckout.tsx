@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '../api'
 import { ApiError } from '../api/errors'
 import { USE_MOCKS } from '../lib/config'
@@ -48,6 +48,16 @@ export function usePayPalCheckout() {
   const popupRef = useRef<Window | null>(null)
   const returned = useRef<'approved' | 'cancel' | null>(null)
   const mockDecision = useRef<((approved: boolean) => void) | null>(null)
+
+  // If whatever uses this hook goes away mid-payment (the chat is closed, the user changes tab), stop waiting for PayPal.
+  useEffect(
+    () => () => {
+      cancelled.current = true
+      popupRef.current?.close()
+      mockDecision.current?.(false)
+    },
+    [],
+  )
 
   const finish = useCallback(() => {
     setPhase('idle')
