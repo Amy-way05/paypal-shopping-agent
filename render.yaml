@@ -16,10 +16,11 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # lite answers in 2-5 s; 3.8/3.7 flash often 503/504 under load (template reply is the last fallback)
       - key: GEMINI_MODEL
-        value: gemini-3.8-flash
+        value: gemini-flash-lite-latest
       - key: GEMINI_FALLBACK_MODEL
-        value: gemini-3.7-flash
+        value: ""
       - key: FRONTEND_URL
         sync: false
       - key: CORS_ORIGINS
