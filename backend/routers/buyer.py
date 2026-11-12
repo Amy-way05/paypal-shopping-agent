@@ -68,7 +68,10 @@ def get_savings(buyer_id: str):
                        "amount": latest["amount"], "date": latest["date"]} if latest else None,
         }
     total = round(sum(b["total"] for b in breakdown.values()), 2)
-    this_month = round(sum(e["amount"] for e in events if _month_key(e["date"]) == month), 2)
+    # Only real savings count toward the numbers (a late refund coming back is the buyer's own money),
+    # so total, this month, trend and per-category always agree.
+    saved = [e for e in events if e["type"] in SAVINGS_LABELS]
+    this_month = round(sum(e["amount"] for e in saved if _month_key(e["date"]) == month), 2)
 
     # last 6 months, zero-filled
     y, mo = date.today().year, date.today().month
@@ -76,13 +79,13 @@ def get_savings(buyer_id: str):
     for _ in range(6):
         months.insert(0, f"{y:04d}-{mo:02d}")
         y, mo = (y, mo - 1) if mo > 1 else (y - 1, 12)
-    trend = [{"month": k, "amount": round(sum(e["amount"] for e in events if _month_key(e["date"]) == k), 2)}
+    trend = [{"month": k, "amount": round(sum(e["amount"] for e in saved if _month_key(e["date"]) == k), 2)}
              for k in months]
 
     spend = data.buyer_spend(buyer_id) if data.buyer_exists(buyer_id) else None
     spend_month = get_spend(buyer_id)["month"]
     saved_by_cat = {}
-    for e in events:
+    for e in saved:
         if e.get("category"):
             saved_by_cat[e["category"]] = saved_by_cat.get(e["category"], 0) + e["amount"]
     alerts = data.active_alerts(buyer_id) if spend else []
@@ -104,7 +107,7 @@ def get_savings(buyer_id: str):
             "purchases_watched": data.purchases_watched(buyer_id) if spend else 0,
             "active_alerts": len(open_alerts),
             "top_merchant": spend["top_merchant"] if spend else None,
-            "savings_rate_pct": round(this_month / spend_month * 100, 1) if spend_month else 0,
+            "savings_rate_pct": min(round(this_month / spend_month * 100, 1), 100.0) if spend_month > 0 else 0,
         },
         "data_as_of": data.DATA_TODAY.isoformat(),
     }

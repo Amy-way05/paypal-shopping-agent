@@ -23,29 +23,48 @@ class PayPalError(Exception):
         self.status, self.name, self.message, self.debug_id = status, name, message, debug_id
 
 
+def _env(name):
+    # tolerate copy-paste whitespace / quotes in .env or the Render dashboard
+    return os.getenv(name, "").strip().strip('"').strip("'")
+
+
 def enabled():
     return (os.getenv("PAYPAL_MODE", "sandbox").lower() != "off"
-            and bool(os.getenv("PAYPAL_CLIENT_ID") and os.getenv("PAYPAL_SECRET")))
+            and bool(_env("PAYPAL_CLIENT_ID") and _env("PAYPAL_SECRET")))
+
+
+def _request(method, url, **kw):
+    """requests call where network failures become a PayPalError (-> 502), never an unhandled 500."""
+    try:
+        return requests.request(method, url, timeout=TIMEOUT, **kw)
+    except requests.Timeout:
+        raise PayPalError(504, "PAYPAL_TIMEOUT", "PayPal Sandbox didn't answer in time. Try again.")
+    except requests.RequestException:
+        raise PayPalError(503, "PAYPAL_UNREACHABLE", "Can't reach PayPal Sandbox right now. Try again.")
 
 
 def get_access_token():
     """OAuth2 client-credentials token, cached until 60s before expiry."""
     if _token["value"] and time.time() < _token["expires_at"] - 60:
         return _token["value"]
-    r = requests.post(f"{BASE_URL}/v1/oauth2/token",
-                      auth=(os.getenv("PAYPAL_CLIENT_ID", ""), os.getenv("PAYPAL_SECRET", "")),
-                      data={"grant_type": "client_credentials"}, timeout=TIMEOUT)
+    r = _request("POST", f"{BASE_URL}/v1/oauth2/token",
+                 auth=(_env("PAYPAL_CLIENT_ID"), _env("PAYPAL_SECRET")),
+                 data={"grant_type": "client_credentials"})
     if r.status_code != 200:
-        raise PayPalError(r.status_code, "AUTH_FAILED", "Could not get a PayPal access token")
-    j = r.json()
-    _token.update(value=j["access_token"], expires_at=time.time() + j.get("expires_in", 3000))
+        raise PayPalError(r.status_code, "AUTH_FAILED",
+                          "PayPal rejected the Client ID / Secret (check they're the SANDBOX app's keys)")
+    try:
+        j = r.json()
+        _token.update(value=j["access_token"], expires_at=time.time() + j.get("expires_in", 3000))
+    except (ValueError, KeyError):
+        raise PayPalError(502, "AUTH_FAILED", "Unexpected token response from PayPal")
     return _token["value"]
 
 
 def _call(method, path, body=None, extra_headers=None):
     headers = {"Authorization": f"Bearer {get_access_token()}", "Content-Type": "application/json"}
     headers.update(extra_headers or {})
-    r = requests.request(method, f"{BASE_URL}{path}", json=body, headers=headers, timeout=TIMEOUT)
+    r = _request(method, f"{BASE_URL}{path}", json=body, headers=headers)
     if r.status_code >= 400:
         try:
             j = r.json()

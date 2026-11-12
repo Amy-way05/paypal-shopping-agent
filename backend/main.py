@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 load_dotenv()
 
 from routers import agent, agent_pass, buyer, demo, merchant, orders  # noqa: E402
-from services import llm, models_adapter, paypal_client  # noqa: E402
+from services import config_check, llm, models_adapter, paypal_client  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 
@@ -26,6 +26,7 @@ async def lifespan(app):
     # data/ and *.joblib are gitignored: build them on first start, then warm the caches.
     models_adapter.ensure_ready()
     models_adapter.warm_up()
+    config_check.run()  # validate keys/URLs once; result shown on /health, never the secrets
     yield
 
 
@@ -33,7 +34,8 @@ app = FastAPI(title="PayPal Shopping Agent API", version="0.3.0", lifespan=lifes
               description="Contract: API.md v0.3. Data from models/ (synthetic), payments via PayPal Sandbox.")
 
 # Comma-separated list in .env; defaults to the Vite dev server.
-origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+# Trailing slashes are stripped: "https://x.onrender.com/" would never match the browser's Origin header.
+origins = [o.strip().rstrip("/") for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +66,7 @@ def health():
         "gemini_configured": llm.enabled(),
         "gemini_models": llm.models() if llm.enabled() else [],
         "data_as_of": models_adapter.DATA_TODAY.isoformat(),
+        "config": config_check.RESULT,  # startup validation of keys/URLs (no secret values)
     }
 
 

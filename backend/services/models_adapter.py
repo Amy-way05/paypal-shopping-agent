@@ -12,6 +12,7 @@ import functools
 import json
 import os
 import re
+import statistics
 import subprocess
 import sys
 from datetime import date, timedelta
@@ -212,7 +213,15 @@ def better_deal(product_name, price, category, merchant_id=None):
         alts.append({**a, "price": round(a["price"], 2), "rating": m.get("rating"),
                      "delivery_days": m.get("delivery_days")})
     alts.sort(key=lambda a: a["price"])
-    return {"network": res["network"], "alternatives": alts[:3], "matched_product": resolved,
+    network = res["network"]
+    if resolved:
+        # "typical price" = what this same product sells for across the network, not the whole category
+        prices = sorted(p["price"] for p in _products() if p["product_name"] == resolved)
+        median = float(statistics.median(prices))
+        network = {"median_price": round(median, 2),
+                   "percentile": int(round(100 * sum(1 for x in prices if x < float(price)) / len(prices))),
+                   "overpaying": bool(float(price) > median)}
+    return {"network": network, "alternatives": alts[:3], "matched_product": resolved,
             "category": cat}
 
 

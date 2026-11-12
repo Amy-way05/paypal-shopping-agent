@@ -10,6 +10,7 @@ import re
 from fastapi import APIRouter, HTTPException
 
 import state as m
+from errors import api_error
 from routers import buyer
 from routers.agent_pass import run_check
 from routers.orders import create_order_internal
@@ -93,10 +94,11 @@ class Toolbox:
             self._log("check_agent_pass", f"{o['agent_pass']['decision']}: {o['agent_pass']['reason']}")
             self._log("create_order", f"{o['paypal_mode'].title()} order {o['order_id']} created")
             self.cards.append({"type": "order", "data": {k: o[k] for k in (
-                "order_id", "status", "approve_url", "amount", "payment_option")}})
+                "order_id", "status", "approve_url", "amount", "payment_option", "paypal_mode")}})
             return {"order_id": o["order_id"], "status": o["status"], "amount": o["amount"],
                     "approve_url": o["approve_url"]}
-        return self._once(("buy", product_name, price), run)
+        # at most one order per message, even if Gemini retries or the template fallback runs after it
+        return self._once(("buy",), run)
 
     def get_savings(self) -> dict:
         """The buyer's savings report: total saved, this month, breakdown by type."""
@@ -132,7 +134,8 @@ class Toolbox:
             self._log("create_savings_goal", f"Goal {g['goal_id']}: {g['weeks_remaining']} weeks to go")
             self.cards.append({"type": "goal", "data": g})
             return {k: g[k] for k in ("goal_id", "final_price", "weeks_remaining", "status", "agent_message")}
-        return self._once(("goal", product_name, target_price), run)
+        # at most one new goal per message (same reason as buy_item)
+        return self._once(("goal",), run)
 
     # ---- helpers
     def tools(self):
@@ -192,6 +195,9 @@ def _fallback(tb, message):
 
 @router.post("/chat")
 def chat(body: AgentChat):
+    buyer._require_buyer(body.buyer_id)
+    if not body.message.strip():
+        raise api_error(400, "BAD_REQUEST", "message: Say something to the agent")
     session_id = body.session_id or m.new_id("CH_")
     tb = Toolbox(body.buyer_id)
     history = m.STATE["chats"].get(session_id, [])

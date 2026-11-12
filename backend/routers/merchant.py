@@ -33,11 +33,13 @@ def dashboard(merchant_id: str):
     at_risk = [r for r in rows if r["risk_tier"] in ("high", "medium")]
     offers = [o for o in m.STATE["offers"].values() if o["merchant_id"] == merchant_id]
     status_by_customer = {o["customer_id"]: (o["outcome"] or "sent") for o in offers}
+    offer_id_by_customer = {o["customer_id"]: o["offer_id"] for o in offers}
     redeemed = [o for o in offers if o["outcome"] == "redeemed"]
     churn_rows = [{**{k: r[k] for k in ("customer_id", "customer_name", "churn_probability", "risk_tier",
                                          "days_since_purchase", "total_spend", "order_count",
                                          "last_category", "avg_order_value")},
-                   "offer_status": status_by_customer.get(r["customer_id"])}
+                   "offer_status": status_by_customer.get(r["customer_id"]),
+                   "offer_id": offer_id_by_customer.get(r["customer_id"])}
                   for r in rows[:DASHBOARD_ROWS]]
     met = data.metrics().get("churn_predictor", {})
     return {

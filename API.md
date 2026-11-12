@@ -14,6 +14,14 @@
 7. **Save For It:** new field `price_source`: `"catalog"` (priced from `products.json` + best merchant coupon), `"your_target"` (not in catalog), or `"demo_seed"` (the demo laptop goal `G_7f3a`).
 8. **Merchant:** churn rows add `avg_order_value`; cross-sell rows add `pair_count`. `send-offer` adds `invoice_error`; `invoice_id` is `null` and `invoice_status: "SIMULATED"` until Invoicing is enabled on the PayPal app. `message_source` is the Gemini model name or `"template"`. Unknown merchant/customer → 404.
 9. **Agent chat:** `reply_source` is the Gemini model used, or `"template"` when Gemini is unavailable. `pending_confirmation` = `{tool, reason, args}`. To confirm, `POST /api/orders` with `args` (already has `confirmed: true`).
+10. **v0.3.1 (QA pass), still additive:**
+    - Merchant churn rows add `offer_id` (`null` until an offer is sent), so outcomes can be logged after a page reload.
+    - Chat `order` cards add `paypal_mode`.
+    - Better deal `network.median_price` / `percentile` / `overpaying` are for the **matched product** (they were category-wide).
+    - Savings `this_month`, `trend`, `spend_by_category[].saved` and `savings_rate_pct` (capped at 100) count only real savings, so they always agree with `total_saved`.
+    - Orders and chat: unknown `buyer_id` → **404**, unknown `goal_id` → **404**, empty chat message → **400**. Orders store the merchant's name, not its ID.
+    - PayPal timeouts or network errors return **502 `PAYPAL_ERROR`** (never 500).
+    - `/health` adds `config: {paypal, gemini, warnings}`, the startup validation of keys and URLs (no secret values).
 
 ## What changed in v0.2 (vs v0.1)
 

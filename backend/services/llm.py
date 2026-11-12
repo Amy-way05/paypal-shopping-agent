@@ -17,8 +17,12 @@ _cooldown_until = {}
 _client = None
 
 
+def _key():
+    return os.getenv("GEMINI_API_KEY", "").strip().strip('"').strip("'")
+
+
 def enabled():
-    return bool(os.getenv("GEMINI_API_KEY")) and os.getenv("LLM_MODE", "on").lower() != "off"
+    return bool(_key()) and os.getenv("LLM_MODE", "on").strip().lower() != "off"
 
 
 def models():
@@ -36,7 +40,7 @@ def client():
     if _client is None:
         from google import genai
         from google.genai import types
-        _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"),
+        _client = genai.Client(api_key=_key(),
                                http_options=types.HttpOptions(timeout=TIMEOUT_MS))
     return _client
 

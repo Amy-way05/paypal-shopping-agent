@@ -13,6 +13,7 @@ import state as m
 from errors import api_error
 from routers.agent_pass import enforce, record_spend
 from schemas import OrderCreate
+from services import models_adapter as data
 from services import paypal_client as pp
 
 router = APIRouter(prefix="/api/orders", tags=["Orders"])
@@ -45,6 +46,12 @@ def _paypal_error(e):
 
 def create_order_internal(body: OrderCreate, merchant_name=None):
     """Shared by POST /api/orders, Save For It purchase and the agent chat."""
+    if not data.buyer_exists(body.buyer_id):
+        raise api_error(404, "NOT_FOUND", f"Buyer {body.buyer_id} not found")
+    if body.goal_id and body.goal_id not in m.STATE["goals"]:
+        raise api_error(404, "NOT_FOUND", f"Goal {body.goal_id} not found")
+    if not merchant_name and body.merchant_id:
+        merchant_name = (data.merchant(body.merchant_id) or {}).get("merchant_name")
     planned = body.source == "save_for_it"
     agent_pass = enforce(body.buyer_id, body.amount, body.category, body.merchant_id, merchant_name,
                          action="purchase", planned=planned, confirmed=body.confirmed)
