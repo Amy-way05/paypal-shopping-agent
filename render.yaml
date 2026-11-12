@@ -24,3 +24,21 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+
+  # Frontend: static site (no cold start). Set VITE_API_BASE_URL in the dashboard to the API service's public URL,
+  # then set the API's FRONTEND_URL and CORS_ORIGINS to this site's URL.
+  - type: web
+    name: paypal-shopping-agent-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npx vite build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_USE_MOCKS
+        value: "false"

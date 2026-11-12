@@ -3,17 +3,20 @@ export const APP_NAME = 'PayPal Shopping Agent'
 
 // Demo users from the API contract (no login).
 export const DEMO_BUYER_ID = 'B001'
-export const DEMO_MERCHANT_ID = 'M001'
+export const DEMO_MERCHANT_ID = 'M007' // TechHaven in data/merchants.csv (API.md v0.3)
 
+// The backend's real catalog categories (API.md v0.3), plus 'gambling' so the default Agent Pass block is visible.
 export const CATEGORIES = [
   'electronics',
-  'sports',
   'home',
-  'fashion',
+  'apparel',
   'beauty',
-  'toys',
+  'sporting_goods',
   'books',
-  'groceries',
+  'toys',
+  'grocery',
+  'furniture',
+  'pet_supplies',
   'gambling',
 ] as const
 

@@ -16,9 +16,9 @@ export default function BetterDeal() {
   const toast = useToast()
   const { checkout, dialog, busy } = usePayPalCheckout()
 
-  const [form, setForm] = useState({ product_name: '', price: '', category: 'sports', merchant_name: '' })
+  const [form, setForm] = useState({ product_name: '', price: '', category: 'sporting_goods', merchant_name: '' })
   const [result, setResult] = useState<BetterDealResponse | null>(null)
-  const [searchedCategory, setSearchedCategory] = useState('sports')
+  const [searchedCategory, setSearchedCategory] = useState('sporting_goods')
   const [finding, setFinding] = useState(false)
   const [findError, setFindError] = useState<string | null>(null)
 
@@ -119,7 +119,7 @@ export default function BetterDeal() {
   }
 
   function fillExample() {
-    setForm({ product_name: 'Running Insoles', price: '24', category: 'sports', merchant_name: 'FootFirst' })
+    setForm({ product_name: 'Running Insoles', price: '24', category: 'sporting_goods', merchant_name: 'FootFirst' })
   }
 
   return (
@@ -202,7 +202,7 @@ export default function BetterDeal() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Card className="p-5">
                 <p className="text-sm font-semibold text-muted">Your pick</p>
-                <p className="mt-2 font-semibold">{result.your_pick.product_name}</p>
+                <p className="mt-2 font-semibold">{result.matched_product ?? result.your_pick.product_name}</p>
                 <p className="text-sm text-muted">{result.your_pick.merchant_name ?? 'Store not given'}</p>
                 <p className="mt-4 font-display text-3xl font-bold">{moneyExact(result.your_pick.price)}</p>
               </Card>
@@ -223,7 +223,11 @@ export default function BetterDeal() {
               ) : (
                 <Card className="grid place-items-center p-5 text-center">
                   <div>
-                    <p className="font-display text-lg font-bold text-save">You have the best price</p>
+                    {result.matched_product === null ? (
+                      <p className="font-display text-lg font-bold">Not in our catalog yet</p>
+                    ) : (
+                      <p className="font-display text-lg font-bold text-save">You have the best price</p>
+                    )}
                     <p className="mt-1 text-sm text-muted">{result.message ?? EMPTY.alternatives}</p>
                   </div>
                 </Card>
@@ -327,7 +331,7 @@ function PriceGauge({ median, percentile, price, overpaying }: { median: number;
         <div className="absolute inset-y-0 rounded-r-full bg-warn-soft" style={{ left: `${OVERPAYING_FROM}%`, right: 0 }} />
         <div className="absolute -top-1 h-5 w-0.5 bg-muted/60" style={{ left: `${OVERPAYING_FROM}%` }} />
         <div
-          className={cx('absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow', overpaying ? 'bg-warn' : 'bg-save')}
+          className={cx('absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow', overpaying ? 'bg-amber' : 'bg-save')}
           style={{ left: `${Math.max(2, Math.min(98, percentile))}%` }}
         />
       </div>
@@ -337,7 +341,7 @@ function PriceGauge({ median, percentile, price, overpaying }: { median: number;
           Overpaying zone
         </span>
       </div>
-      <p className={cx('mt-3 text-sm font-semibold', overpaying ? 'text-warn' : 'text-save')}>
+      <p className={cx('mt-3 text-sm font-semibold', overpaying ? 'text-ink' : 'text-save')}>
         {overpaying ? `Your price is higher than ${percentile}% of what others paid.` : `Your price is in line with what others paid (higher than ${percentile}%).`}
       </p>
     </Card>

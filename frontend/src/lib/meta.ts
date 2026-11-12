@@ -19,6 +19,7 @@ export const ACTION_META: Record<string, Meta> = {
   delivery_delay: { label: 'Late delivery', icon: 'truck', tone: 'slate' },
   refund: { label: 'Overdue refund', icon: 'undo', tone: 'red' },
   late_refund: { label: 'Overdue refund', icon: 'undo', tone: 'red' },
+  refund_recovered: { label: 'Refund recovered', icon: 'undo', tone: 'green' },
 }
 
 export function actionMeta(type: string): Meta {
@@ -28,7 +29,7 @@ export function actionMeta(type: string): Meta {
 export const TONE_CLASSES: Record<Tone, { chip: string; dot: string; icon: string }> = {
   blue: { chip: 'bg-pay-soft text-pay-dark', dot: 'bg-pay', icon: 'bg-pay-soft text-pay-dark' },
   green: { chip: 'bg-save-soft text-save', dot: 'bg-save', icon: 'bg-save-soft text-save' },
-  amber: { chip: 'bg-warn-soft text-warn', dot: 'bg-warn', icon: 'bg-warn-soft text-warn' },
+  amber: { chip: 'bg-warn-soft text-ink', dot: 'bg-amber', icon: 'bg-warn-soft text-ink' },
   red: { chip: 'bg-danger-soft text-danger', dot: 'bg-danger', icon: 'bg-danger-soft text-danger' },
   slate: { chip: 'bg-paper text-muted', dot: 'bg-muted', icon: 'bg-paper text-muted' },
 }

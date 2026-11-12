@@ -4,7 +4,7 @@ import { cx } from './ui'
 
 const COPY = {
   APPROVE: { label: 'Auto-approved', tone: 'bg-save-soft text-save', icon: 'check' as const },
-  NEEDS_CONFIRMATION: { label: 'Needs your OK', tone: 'bg-warn-soft text-warn', icon: 'lock' as const },
+  NEEDS_CONFIRMATION: { label: 'Needs your OK', tone: 'bg-pay-soft text-pay-dark', icon: 'lock' as const },
   BLOCK: { label: 'Blocked by Agent Pass', tone: 'bg-danger-soft text-danger', icon: 'x' as const },
 }
 

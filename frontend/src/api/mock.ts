@@ -152,7 +152,7 @@ function seedSavings(): Savings {
       spend_by_category: [
         { category: 'electronics', amount: 612.4, saved: 58.99 },
         { category: 'home', amount: 310.15, saved: 18.0 },
-        { category: 'sports', amount: 188.2, saved: 6.0 },
+        { category: 'sporting_goods', amount: 188.2, saved: 6.0 },
         { category: 'fashion', amount: 130.0, saved: 0 },
       ],
       purchases_watched: 42,
@@ -325,6 +325,7 @@ function addSaving(kind: SavingsKind, amount: number, item: string, merchant: st
 
 // ---------- Flow A ----------
 interface CatalogItem {
+  name: string
   match: RegExp
   median: number
   alts: { id: string; mid: string; price: number; rating: number; days: number; dispute: number; ontime: number }[]
@@ -332,6 +333,7 @@ interface CatalogItem {
 
 const CATALOG: CatalogItem[] = [
   {
+    name: 'Running Insoles',
     match: /insole/i,
     median: 19.5,
     alts: [
@@ -340,6 +342,7 @@ const CATALOG: CatalogItem[] = [
     ],
   },
   {
+    name: 'Wireless Headphones',
     match: /headphone/i,
     median: 74,
     alts: [
@@ -349,6 +352,7 @@ const CATALOG: CatalogItem[] = [
     ],
   },
   {
+    name: 'Dell XPS 14 Laptop',
     match: /laptop|xps|macbook/i,
     median: 1090,
     alts: [
@@ -364,12 +368,8 @@ function findDeal(req: FindBetterDealRequest): BetterDealResponse {
   const percentile = Math.max(1, Math.min(99, Math.round(50 + ((req.price - median) / median) * 165)))
   const overpaying = percentile > 65
 
-  const rawAlts = item
-    ? item.alts
-    : [
-        { id: 'P_9001', mid: 'M023', price: r2(req.price * 0.82), rating: 8.9, days: 3, dispute: 0.014, ontime: 0.95 },
-        { id: 'P_9002', mid: 'M031', price: r2(req.price * 0.88), rating: 8.3, days: 2, dispute: 0.02, ontime: 0.92 },
-      ]
+  // Like the real backend: only products in the catalog get alternatives.
+  const rawAlts = item ? item.alts : []
 
   const alternatives: Alternative[] = rawAlts
     .filter((a) => a.price < req.price)
@@ -403,11 +403,14 @@ function findDeal(req: FindBetterDealRequest): BetterDealResponse {
     best_option: best ? best.product_id : null,
     potential_savings: best ? best.savings : 0,
     source: 'local_catalog',
+    matched_product: item ? item.name : null,
     agent_pass,
     agent_message: best
       ? `Same ${req.product_name.toLowerCase()} for ${usd(best.price)} at ${best.merchant_name}: rated ${best.rating}/10 with ${best.delivery_days}-day delivery. That's ${usd(best.savings)} less${req.merchant_name ? ` than ${req.merchant_name}` : ''}.`
-      : `${usd(req.price)} is already a good price for ${req.product_name.toLowerCase()}. I couldn't find a cheaper option from trusted merchants.`,
-    message: best ? null : 'You already have the best price.',
+      : item
+        ? 'You already have the best price we can find.'
+        : `I couldn't find "${req.product_name}" at other stores in the catalog.`,
+    message: best ? null : item ? 'You already have the best price we can find.' : `I couldn't find "${req.product_name}" at other stores in the catalog.`,
   }
 }
 
@@ -697,7 +700,7 @@ function scanResults(): ScanResults {
 function dashboard(): MerchantDashboard {
   const m = S.merchant
   return {
-    merchant_id: 'M001',
+    merchant_id: 'M007',
     merchant_name: 'TechHaven',
     summary: {
       at_risk_customers: 340,
@@ -714,7 +717,7 @@ function dashboard(): MerchantDashboard {
       { product_a: 'Monitors', product_b: 'HDMI Cables', co_purchase_rate: 0.41, suggested_bundle_discount_pct: 12 },
       { product_a: 'Keyboards', product_b: 'Mouse Pads', co_purchase_rate: 0.22, suggested_bundle_discount_pct: 6 },
     ],
-    model_info: { churn_model: 'random_forest', auc: 0.74, note: 'Metrics on synthetic data' },
+    model_info: { churn_model: 'GradientBoostingClassifier', auc: 0.74, precision: 0.68, recall: 0.71, note: 'Metrics on synthetic data' },
     message: null,
   }
 }
@@ -735,50 +738,25 @@ function sendOffer(body: { merchant_id: string; customer_id: string; discount_pc
     discount_pct: discount,
     message: `${discount}% off your next order, ${c.customer_name.split(' ')[0]}! We miss you at TechHaven. Valid for 14 days.`,
     message_source: 'template',
-    invoice_id: `INV2-${uid()}-1234-EFGH-5678`,
-    invoice_status: 'SENT',
+    invoice_id: null,
+    invoice_status: 'SIMULATED',
+    invoice_error: null,
     sent_at: new Date().toISOString(),
   }
 }
 
 // ---------- Agent chat ----------
 function guessCategory(name: string): string {
-  if (/insole|shoe|run/i.test(name)) return 'sports'
+  if (/insole|shoe|run/i.test(name)) return 'sporting_goods'
   if (/headphone|laptop|phone|monitor|keyboard/i.test(name)) return 'electronics'
   return 'home'
 }
 
 function chat(body: { buyer_id: string; message: string; session_id: string | null }): AgentChatResponse {
   const sid = body.session_id ?? `CH_${uid()}`
-  const session = (S.sessions[sid] ??= { pending: null })
   const msg = body.message.trim()
   const lower = msg.toLowerCase()
   const base = { session_id: sid, reply_source: 'template' as const }
-
-  if (/^(yes|y|confirm|ok|okay|do it|go ahead)\b/.test(lower) && session.pending) {
-    const p = session.pending
-    session.pending = null
-    const order = createOrder({
-      buyer_id: body.buyer_id,
-      product_id: p.productId,
-      product_name: p.name,
-      merchant_id: p.merchantId,
-      category: p.category,
-      amount: p.amount,
-      original_price: p.original,
-      payment_option: 'pay_now',
-      source: 'agent',
-      goal_id: null,
-      confirmed: true,
-    })
-    return {
-      ...base,
-      reply: `Done. I created the order at ${p.merchantName}. Approve it in PayPal and you'll save ${usd(p.original - p.amount)}.`,
-      tool_calls: [{ tool: 'create_order', summary: `Sandbox order ${order.order_id} created` }],
-      cards: [{ type: 'order', data: order }],
-      pending_confirmation: null,
-    }
-  }
 
   if (/scan|guardian|my purchases/.test(lower)) {
     S.scan = { id: `S_${uid()}`, startedAt: Date.now(), claimedAt: {} }
@@ -812,7 +790,7 @@ function chat(body: { buyer_id: string; message: string; session_id: string | nu
     const deal = findDeal({ buyer_id: body.buyer_id, product_name: name.replace(/\b\w/g, (c) => c.toUpperCase()), price, category, merchant_name: merchantMatch?.[1] })
     const best = deal.alternatives[0]
     const calls = [{ tool: 'find_better_deal', summary: best ? `Best option ${usd(best.price)} at ${best.merchant_name} (save ${usd(best.savings)})` : 'No cheaper option found' }]
-    const cards: AgentCard[] = [{ type: 'better_deal', data: deal }]
+    const cards: AgentCard[] = best ? [{ type: 'better_deal', data: { your_pick: deal.your_pick, best_option: best, potential_savings: deal.potential_savings } }] : []
     if (!best || !deal.agent_pass) {
       return { ...base, reply: deal.agent_message, tool_calls: calls, cards, pending_confirmation: null }
     }
@@ -842,13 +820,29 @@ function chat(body: { buyer_id: string; message: string; session_id: string | nu
       }
     }
     if (deal.agent_pass.decision === 'NEEDS_CONFIRMATION') {
-      session.pending = { productId: best.product_id, name: best.product_name, merchantId: best.merchant_id, merchantName: best.merchant_name, category, amount: best.price, original: price }
+      // Same shape as the real backend: to confirm, the UI POSTs /api/orders with these args.
       return {
         ...base,
-        reply: `${deal.agent_message} ${deal.agent_pass.reason}. Reply "yes" and I'll create the order.`,
+        reply: `${deal.agent_message} ${deal.agent_pass.reason}. Confirm below and I'll create the order.`,
         tool_calls: calls,
         cards,
-        pending_confirmation: { action: 'create_order', amount: best.price, reason: deal.agent_pass.reason },
+        pending_confirmation: {
+          tool: 'create_order',
+          reason: deal.agent_pass.reason,
+          args: {
+            buyer_id: body.buyer_id,
+            product_id: best.product_id,
+            product_name: best.product_name,
+            merchant_id: best.merchant_id,
+            category,
+            amount: best.price,
+            original_price: price,
+            payment_option: 'pay_now',
+            source: 'agent',
+            goal_id: null,
+            confirmed: true,
+          },
+        },
       }
     }
     return { ...base, reply: `${deal.agent_message} I can't buy it for you though: ${deal.agent_pass.reason}.`, tool_calls: calls, cards, pending_confirmation: null }
@@ -998,7 +992,7 @@ const routes: [Method, RegExp, Handler][] = [
 
   ['POST', /^\/api\/demo\/reset$/, () => {
     S = seed()
-    return { status: 'reset', buyer_id: 'B001', merchant_id: 'M001' }
+    return { status: 'reset', buyer_id: 'B001', merchant_id: 'M007' }
   }],
 ]
 

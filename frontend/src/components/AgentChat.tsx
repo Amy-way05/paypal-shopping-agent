@@ -4,8 +4,9 @@ import { errorMessage } from '../api/errors'
 import { DEMO_BUYER_ID } from '../lib/constants'
 import { money, moneyExact } from '../lib/format'
 import { navigate } from '../hooks/useRoute'
-import type { AgentCard, AgentToolCall, BetterDealResponse, OrderCreated } from '../types/api'
+import type { AgentCard, AgentChatResponse, AgentToolCall, Alternative, CreateOrderRequest, OrderCreated } from '../types/api'
 import { AgentPassChip } from './AgentPassChip'
+import { ErrorBoundary } from './ErrorBoundary'
 import { Icon } from './Icon'
 import { usePayPalCheckout } from './PayPalCheckout'
 import { useToast } from './Toast'
@@ -17,8 +18,8 @@ interface Msg {
   text: string
   toolCalls?: AgentToolCall[]
   cards?: AgentCard[]
-  pending?: { amount: number; reason: string } | null
-  source?: 'gemini' | 'template'
+  pending?: AgentChatResponse['pending_confirmation']
+  source?: string
   failed?: boolean
 }
 
@@ -98,7 +99,7 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
           {messages.map((m) => (
-            <Bubble key={m.id} msg={m} isLast={m === lastAgent} sending={sending} onYes={() => void send('yes')} onClose={onClose} />
+            <Bubble key={m.id} msg={m} isLast={m === lastAgent} onClose={onClose} />
           ))}
           {sending && (
             <div className="flex" role="status" aria-label="Agent is working">
@@ -130,7 +131,7 @@ export function AgentChat({ open, onClose }: { open: boolean; onClose: () => voi
   )
 }
 
-function Bubble({ msg, isLast, sending, onYes, onClose }: { msg: Msg; isLast: boolean; sending: boolean; onYes: () => void; onClose: () => void }) {
+function Bubble({ msg, isLast, onClose }: { msg: Msg; isLast: boolean; onClose: () => void }) {
   if (msg.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -159,17 +160,14 @@ function Bubble({ msg, isLast, sending, onYes, onClose }: { msg: Msg; isLast: bo
         </div>
       )}
 
-      {msg.cards?.map((c, i) => <CardView key={i} card={c} onClose={onClose} />)}
+      {msg.cards?.map((c, i) => (
+        // A malformed card should never take the chat down.
+        <ErrorBoundary key={i} fallback={null}>
+          <CardView card={c} onClose={onClose} />
+        </ErrorBoundary>
+      ))}
 
-      {msg.pending && isLast && (
-        <div className="rounded-xl border border-warn/40 bg-warn-soft p-3 text-sm text-warn">
-          <p className="font-semibold">Waiting for your OK: {moneyExact(msg.pending.amount)}</p>
-          <p>{msg.pending.reason}</p>
-          <Button small variant="save" className="mt-2" disabled={sending} onClick={onYes}>
-            Yes, go ahead
-          </Button>
-        </div>
-      )}
+      {msg.pending && isLast && <PendingCard pending={msg.pending} />}
 
       {msg.source === 'template' && !msg.failed && <Badge tone="slate">Fallback reply, Gemini was not used</Badge>}
     </div>
@@ -180,24 +178,45 @@ function CardView({ card, onClose }: { card: AgentCard; onClose: () => void }) {
   if (card.type === 'order') return <OrderCard order={card.data as OrderCreated} />
 
   if (card.type === 'better_deal') {
-    const d = card.data as BetterDealResponse
-    const best = d.alternatives.find((a) => a.product_id === d.best_option)
+    // Chat cards carry a slimmer shape than POST /api/find-better-deal: best_option is the alternative itself.
+    const d = card.data as { your_pick?: { price: number }; best_option?: Alternative | null; potential_savings?: number }
+    const best = d.best_option
+    if (!best || typeof best !== 'object') return null
     return (
       <div className="rounded-xl border border-line p-3 text-sm">
-        {best ? (
-          <>
-            <p className="font-semibold">
-              {best.product_name} at {best.merchant_name}
-            </p>
-            <p className="mt-0.5">
-              <span className="font-display text-xl font-bold text-save">{moneyExact(best.price)}</span>{' '}
-              <span className="text-muted">instead of {moneyExact(d.your_pick.price)}. Saves {moneyExact(best.savings)}.</span>
-            </p>
-            <AgentPassChip decision={d.agent_pass} className="mt-2" />
-          </>
-        ) : (
-          <p className="text-muted">{d.message ?? 'No cheaper option found.'}</p>
-        )}
+        <p className="font-semibold">
+          {best.product_name} at {best.merchant_name}
+        </p>
+        <p className="mt-0.5">
+          <span className="font-display text-xl font-bold text-save">{moneyExact(best.price)}</span>{' '}
+          <span className="text-muted">
+            {d.your_pick ? `instead of ${moneyExact(d.your_pick.price)}. ` : ''}Saves {moneyExact(d.potential_savings ?? best.savings)}.
+          </span>
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Rated {best.rating}/10, {best.delivery_days}-day delivery
+        </p>
+      </div>
+    )
+  }
+
+  if (card.type === 'guardian') {
+    const d = card.data as { alerts?: unknown[]; total_recoverable?: number }
+    return (
+      <div className="rounded-xl border border-line p-3 text-sm">
+        <p>
+          <span className="font-semibold">{d.alerts?.length ?? 0} issues found</span>
+          {d.total_recoverable !== undefined && <span className="text-muted">, {money(d.total_recoverable)} recoverable.</span>}
+        </p>
+        <button
+          className="mt-1 text-xs font-semibold text-pay-dark hover:underline"
+          onClick={() => {
+            onClose()
+            navigate('guardian')
+          }}
+        >
+          Open Guardian
+        </button>
       </div>
     )
   }
@@ -290,6 +309,51 @@ function OrderCard({ order }: { order: OrderCreated }) {
       ) : (
         <Button small variant="save" className="mt-2" loading={busy} onClick={() => void approve()}>
           Approve in PayPal
+        </Button>
+      )}
+      {error && (
+        <p role="alert" className="mt-2 text-xs font-semibold text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** The agent wants to buy but Agent Pass needs the user's OK. To confirm we POST /api/orders with the agent's own args. */
+function PendingCard({ pending }: { pending: NonNullable<AgentChatResponse['pending_confirmation']> }) {
+  const toast = useToast()
+  const { checkout, dialog, busy } = usePayPalCheckout()
+  const [paid, setPaid] = useState<{ saved: number } | null>(null)
+  const [burst, setBurst] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const args = pending.args as CreateOrderRequest
+
+  async function confirm() {
+    setError(null)
+    try {
+      const outcome = await checkout(() => api.createOrder({ ...args, confirmed: true }))
+      if (outcome.status === 'captured') {
+        setPaid({ saved: outcome.capture.saved })
+        if (outcome.capture.saved > 0) setBurst(outcome.capture.saved)
+        toast({ kind: 'success', title: outcome.capture.message })
+      }
+    } catch (e) {
+      setError(errorMessage(e))
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-pay/30 bg-pay-soft p-3 text-sm text-pay-dark">
+      {dialog}
+      <SavedBurst amount={burst} onDone={() => setBurst(null)} />
+      <p className="font-semibold">Waiting for your OK: {moneyExact(args.amount)}</p>
+      <p>{pending.reason}</p>
+      {paid ? (
+        <p className="mt-2 font-semibold text-save">Paid{paid.saved > 0 ? `. You saved ${moneyExact(paid.saved)}.` : '.'}</p>
+      ) : (
+        <Button small variant="save" className="mt-2" loading={busy} onClick={() => void confirm()}>
+          Confirm and pay
         </Button>
       )}
       {error && (

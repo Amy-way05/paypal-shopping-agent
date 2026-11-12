@@ -35,10 +35,23 @@ interface GridContext {
 
 type Tier = 'all' | RiskTier
 
+/** What actually happened to the PayPal invoice. The backend says SIMULATED until Invoicing is enabled on the PayPal app. */
+function invoiceNote(offer: OfferSent): string {
+  if (offer.invoice_status === 'SENT') return 'PayPal sent the invoice.'
+  if (offer.invoice_status === 'SIMULATED') return 'Offer saved. The PayPal invoice is simulated for now.'
+  return offer.invoice_error ? `Offer saved, but the invoice failed: ${offer.invoice_error}` : `Offer saved. Invoice status: ${offer.invoice_status}.`
+}
+
+function bulkNote(offers: OfferSent[]): string {
+  if (offers.every((o) => o.invoice_status === 'SENT')) return 'PayPal wrote each message and sent the invoices.'
+  if (offers.every((o) => o.invoice_status === 'SIMULATED')) return 'Offers saved. The PayPal invoices are simulated for now.'
+  return 'Some invoices were not sent. Check the latest offer below.'
+}
+
 // ---------- custom cell renderers ----------
 function ProbabilityCell(p: CustomCellRendererProps<ChurnRow>) {
   const v = Number(p.value ?? 0) / 100
-  const color = v >= 0.7 ? 'bg-danger' : v >= 0.4 ? 'bg-warn' : 'bg-save'
+  const color = v >= 0.7 ? 'bg-danger' : v >= 0.4 ? 'bg-amber' : 'bg-save'
   return (
     <div className="flex h-full items-center gap-2" title={`${Math.round(v * 100)}% likely to stop buying`}>
       <div className="h-2 flex-1 overflow-hidden rounded-full bg-paper">
@@ -81,6 +94,7 @@ function ActionCell(p: CustomCellRendererProps<ChurnRow>) {
       )}
       {status === 'redeemed' && <Badge tone="green">Won back</Badge>}
       {status === 'ignored' && <Badge tone="slate">Ignored</Badge>}
+      {status === 'opened' && <Badge tone="blue">Opened</Badge>}
     </div>
   )
 }
@@ -118,15 +132,15 @@ export default function MerchantDashboard() {
   const rows = useMemo(() => (tier === 'all' ? allRows : allRows.filter((r) => r.risk_tier === tier)), [allRows, tier])
 
   const sendOne = useCallback(
-    async (row: ChurnRow): Promise<boolean> => {
+    async (row: ChurnRow): Promise<OfferSent | null> => {
       try {
         const offer = await api.sendOffer({ merchant_id: DEMO_MERCHANT_ID, customer_id: row.customer_id })
         setOverrides((o) => ({ ...o, [row.customer_id]: { offer_status: 'sent', offer_id: offer.offer_id } }))
         setLastOffer(offer)
-        return true
+        return offer
       } catch (e) {
         toast({ kind: 'error', title: `Could not send the offer to ${row.customer_name}`, body: errorMessage(e) })
-        return false
+        return null
       }
     },
     [toast],
@@ -135,10 +149,10 @@ export default function MerchantDashboard() {
   const onWinBack = useCallback(
     async (row: ChurnRow) => {
       setBusyId(row.customer_id)
-      const ok = await sendOne(row)
+      const offer = await sendOne(row)
       setBusyId(null)
-      if (ok) {
-        toast({ kind: 'success', title: `Offer sent to ${row.customer_name}`, body: 'PayPal created the invoice and sent it.' })
+      if (offer) {
+        toast({ kind: 'success', title: `Offer sent to ${row.customer_name}`, body: invoiceNote(offer) })
         void reload()
       }
     },
@@ -175,14 +189,16 @@ export default function MerchantDashboard() {
       return
     }
     setBulkBusy(true)
-    let sent = 0
+    const offers: OfferSent[] = []
     for (const row of targets) {
-      if (await sendOne(row)) sent += 1
+      const o = await sendOne(row)
+      if (o) offers.push(o)
     }
+    const sent = offers.length
     setBulkBusy(false)
     gridApi.current?.deselectAll()
     if (sent > 0) {
-      toast({ kind: 'success', title: `Sent ${sent} ${sent === 1 ? 'offer' : 'offers'}`, body: 'PayPal wrote each message and sent the invoices.' })
+      toast({ kind: 'success', title: `Sent ${sent} ${sent === 1 ? 'offer' : 'offers'}`, body: bulkNote(offers) })
       void reload()
     }
   }
@@ -249,6 +265,8 @@ export default function MerchantDashboard() {
   if (!data) return null
 
   const s = data.summary
+  const mi = data.model_info
+  const modelBits = [mi.auc != null && `AUC ${mi.auc.toFixed(2)}`, mi.precision != null && `precision ${mi.precision.toFixed(2)}`, mi.recall != null && `recall ${mi.recall.toFixed(2)}`].filter(Boolean).join(', ')
   const counts: Record<Tier, number> = {
     all: allRows.length,
     high: allRows.filter((r) => r.risk_tier === 'high').length,
@@ -266,7 +284,7 @@ export default function MerchantDashboard() {
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Summary">
         <Summary label="Customers at risk" value={s.at_risk_customers.toLocaleString('en-US')} note={`${counts.high} high risk in this list`} />
-        <Summary label="Revenue at stake" value={money(s.recoverable_revenue)} note="Yearly spend of at-risk customers" />
+        <Summary label="Revenue at stake" value={money(s.recoverable_revenue)} note="Typical order value of at-risk customers" />
         <Summary label="Offers sent" value={String(s.offers_sent)} note={`${s.offers_redeemed} redeemed`} />
         <Summary label="Win-back rate" value={`${s.win_back_rate_pct}%`} note={`${money(s.revenue_won_back)} won back`} good />
       </section>
@@ -325,7 +343,7 @@ export default function MerchantDashboard() {
           </div>
         )}
         <p className="mt-2 text-xs text-muted">
-          Churn model: {titleCase(data.model_info.churn_model)}, AUC {data.model_info.auc}. {data.model_info.note}. Tick customers to pick who gets an offer, or leave all unticked to message every high-risk customer without one.
+          Churn model: {titleCase(mi.churn_model)}{modelBits ? `, ${modelBits}` : ''}. {mi.note}. Tick customers to pick who gets an offer, or leave all unticked to message every high-risk customer without one.
         </p>
       </div>
 
@@ -334,12 +352,13 @@ export default function MerchantDashboard() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-semibold">Latest offer, to {lastOffer.customer_name}</p>
             <div className="flex gap-2">
-              <Badge tone="slate">{lastOffer.message_source === 'gemini' ? 'Written by Gemini' : 'Template text'}</Badge>
-              <Badge tone={lastOffer.invoice_status === 'SENT' ? 'green' : 'red'}>Invoice {lastOffer.invoice_status.toLowerCase()}</Badge>
+              <Badge tone="slate">{lastOffer.message_source === 'template' ? 'Template text' : `Written by ${lastOffer.message_source}`}</Badge>
+              <Badge tone={lastOffer.invoice_status === 'SENT' ? 'green' : lastOffer.invoice_status === 'SIMULATED' ? 'slate' : 'red'}>Invoice {lastOffer.invoice_status.toLowerCase()}</Badge>
             </div>
           </div>
           <blockquote className="mt-3 border-l-4 border-pay pl-4 text-lg">{lastOffer.message}</blockquote>
           {lastOffer.invoice_id && <p className="mt-2 text-xs text-muted">PayPal invoice {lastOffer.invoice_id}</p>}
+          {lastOffer.invoice_error && <p className="mt-2 text-xs text-danger">{lastOffer.invoice_error}</p>}
         </Card>
       )}
 

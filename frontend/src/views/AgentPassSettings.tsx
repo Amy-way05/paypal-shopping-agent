@@ -25,7 +25,7 @@ function toDraft(r: AgentPassRules): Draft {
   }
 }
 
-const DECISION_TONE: Record<Decision, 'green' | 'amber' | 'red'> = { APPROVE: 'green', NEEDS_CONFIRMATION: 'amber', BLOCK: 'red' }
+const DECISION_TONE: Record<Decision, 'green' | 'blue' | 'red'> = { APPROVE: 'green', NEEDS_CONFIRMATION: 'blue', BLOCK: 'red' }
 const DECISION_LABEL: Record<Decision, string> = { APPROVE: 'Approved', NEEDS_CONFIRMATION: 'Asked you', BLOCK: 'Blocked' }
 
 export default function AgentPassSettings() {
@@ -250,14 +250,14 @@ function Usage({ label, spent, limit }: { label: string; spent: number; limit: n
 }
 
 const PRESETS = [
-  { label: '$18 insoles', amount: '18', category: 'sports', planned: false },
+  { label: '$18 insoles', amount: '18', category: 'sporting_goods', planned: false },
   { label: '$1,050 laptop, saved for', amount: '1050', category: 'electronics', planned: true },
   { label: '$200 random buy', amount: '200', category: 'electronics', planned: false },
 ]
 
 function RuleTester({ onChecked }: { onChecked: () => void }) {
   const [amount, setAmount] = useState('18')
-  const [category, setCategory] = useState('sports')
+  const [category, setCategory] = useState('sporting_goods')
   const [planned, setPlanned] = useState(false)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<AgentPassCheckResult | null>(null)

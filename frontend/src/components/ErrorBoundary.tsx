@@ -5,7 +5,7 @@ interface State {
   failed: boolean
 }
 
-export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
+export class ErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, State> {
   state: State = { failed: false }
 
   static getDerivedStateFromError(): State {
@@ -18,6 +18,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
 
   render() {
     if (!this.state.failed) return this.props.children
+    if (this.props.fallback !== undefined) return this.props.fallback
     return (
       <div role="alert" className="mx-auto max-w-md rounded-xl border border-line bg-white p-8 text-center">
         <p className="font-display text-xl font-bold">This screen hit a snag</p>

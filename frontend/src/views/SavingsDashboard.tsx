@@ -13,9 +13,9 @@ import type { ActionStatus, SavingsKind } from '../types/api'
 const CARD_ORDER: SavingsKind[] = ['price_drop', 'overcharge', 'better_deal', 'save_for_it']
 
 const STATUS_TONE: Record<ActionStatus, { tone: Tone; label: string }> = {
-  detected: { tone: 'amber', label: 'Detected' },
-  resolved: { tone: 'blue', label: 'Action taken' },
-  recovered: { tone: 'green', label: 'Recovered' },
+  detected: { tone: 'amber', label: 'Spotted' },
+  resolved: { tone: 'blue', label: 'We stepped in' },
+  recovered: { tone: 'green', label: 'Money back' },
 }
 
 export default function SavingsDashboard() {
@@ -40,6 +40,7 @@ export default function SavingsDashboard() {
           <p className="mt-1 text-sm text-white/70">
             {a.savings_rate_pct}% of what you spent this month came back to you.
           </p>
+          {data.data_as_of && <p className="mt-3 text-xs text-white/50">Based on purchases up to {shortDate(data.data_as_of)}.</p>}
           {data.total_saved === 0 && <p className="mt-4 text-sm text-white/80">{data.message ?? EMPTY.savings}</p>}
         </div>
         <div className="min-h-[190px] border-t border-white/10 px-2 pb-3 pt-4 lg:col-span-3 lg:border-l lg:border-t-0">
@@ -72,9 +73,9 @@ export default function SavingsDashboard() {
         </div>
       </section>
 
-      {/* Where it came from */}
+      {/* Where your savings came from */}
       <div>
-        <SectionTitle>Where it came from</SectionTitle>
+        <SectionTitle>Where your savings came from</SectionTitle>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {CARD_ORDER.map((kind) => {
             const c = data.breakdown[kind]
@@ -107,9 +108,9 @@ export default function SavingsDashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        {/* Recent activity */}
+        {/* What PayPal did for you */}
         <div className="lg:col-span-3">
-          <SectionTitle>Recent activity</SectionTitle>
+          <SectionTitle>What PayPal did for you</SectionTitle>
           <Card>
             {data.recent_actions.length === 0 ? (
               <EmptyState

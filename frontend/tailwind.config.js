@@ -15,8 +15,9 @@ export default {
         paper: '#F3F5F9',
         line: '#DCE2EC',
         muted: '#5B6B85',
-        warn: '#9A5B06',
-        'warn-soft': '#FFF1DC',
+        warn: '#9A5B06',          // no longer used for text: it read as brown
+        amber: '#F5A524',         // small signals only (bars, dots)
+        'warn-soft': '#FFF3D6',
         danger: '#B3261E',
         'danger-soft': '#FCE8E6',
       },

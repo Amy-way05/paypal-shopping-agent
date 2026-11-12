@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { api } from '../api'
+import { ApiError } from '../api/errors'
 import { USE_MOCKS } from '../lib/config'
 import { moneyExact } from '../lib/format'
 import type { CaptureResult, OrderCreated } from '../types/api'
@@ -11,17 +12,29 @@ type Phase = 'idle' | 'opening' | 'waiting' | 'blocked' | 'mock' | 'capturing'
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms))
 
+/** Sleep up to `ms`, waking early when `stop()` turns true. */
+async function nap(ms: number, stop: () => boolean) {
+  const end = Date.now() + ms
+  while (Date.now() < end && !stop()) await sleep(100)
+}
+
 /**
  * The PayPal approval flow from API.md:
- *   create order -> open approve_url in a popup -> buyer approves -> capture.
+ *   create order -> open approve_url in a popup -> buyer approves in PayPal -> capture.
  *
- * How it works:
- * - The popup is opened synchronously in the click handler (before any await), so
- *   browsers don't treat it as an unwanted popup. It's pointed at approve_url once the
- *   order exists.
- * - We then poll GET /api/orders/{id} until it says APPROVED, close the popup and
- *   capture. This needs no return_url, so it works even if the backend doesn't set one.
+ * How it works against the real backend:
+ * - The popup is opened synchronously in the click handler (before any await), so browsers
+ *   allow it. It is pointed at approve_url once the order exists.
+ * - We do NOT poll GET /api/orders/{id}: the backend returns the status it stored at creation
+ *   and never refreshes it from PayPal. Instead we retry POST .../capture: PayPal answers
+ *   409 NOT_APPROVED until the buyer has approved, then the capture goes through.
+ * - After approving, PayPal redirects the popup to <frontend>/checkout/return (or /checkout/cancel).
+ *   main.tsx shows a "you can close this" page there and messages this window, which makes us
+ *   retry the capture straight away instead of waiting for the next retry.
  * - If the popup is blocked we show an "Open PayPal" link instead.
+ * - We don't treat a closed popup as a cancel (PayPal pages can make popup.closed unreliable).
+ *   The dialog has a Cancel button, and the wait gives up after 10 minutes.
+ * - paypal_mode "simulated" (PayPal switched off in the backend) captures immediately.
  * - In mock mode there is no PayPal: a small fake approval dialog stands in for it.
  *
  * Usage:  const { checkout, dialog } = usePayPalCheckout()
@@ -33,6 +46,7 @@ export function usePayPalCheckout() {
   const [order, setOrder] = useState<OrderCreated | null>(null)
   const cancelled = useRef(false)
   const popupRef = useRef<Window | null>(null)
+  const returned = useRef<'approved' | 'cancel' | null>(null)
   const mockDecision = useRef<((approved: boolean) => void) | null>(null)
 
   const finish = useCallback(() => {
@@ -50,6 +64,7 @@ export function usePayPalCheckout() {
   const checkout = useCallback(
     async (createOrder: () => Promise<OrderCreated>): Promise<CheckoutOutcome> => {
       cancelled.current = false
+      returned.current = null
 
       // Must happen synchronously inside the click handler.
       let popup: Window | null = null
@@ -74,17 +89,31 @@ export function usePayPalCheckout() {
       }
       setOrder(created)
 
-      let approved = false
+      const onMessage = (e: MessageEvent) => {
+        if (e.origin !== window.location.origin) return
+        const d = e.data as { type?: string; kind?: 'approved' | 'cancel' } | null
+        if (d?.type === 'paypal-return' && d.kind) returned.current = d.kind
+      }
+      window.addEventListener('message', onMessage)
+
+      let capture: CaptureResult | null = null
       try {
         if (USE_MOCKS) {
           setPhase('mock')
-          approved = await new Promise<boolean>((res) => {
+          const approved = await new Promise<boolean>((res) => {
             mockDecision.current = res
           })
           if (approved) {
             const { mockApproveOrder } = await import('../api/mock')
             mockApproveOrder(created.order_id)
+            setPhase('capturing')
+            capture = await api.captureOrder(created.order_id)
           }
+        } else if (created.paypal_mode === 'simulated') {
+          // Backend has PayPal switched off: nothing to approve.
+          popup?.close()
+          setPhase('capturing')
+          capture = await api.captureOrder(created.order_id)
         } else {
           if (popup && !popup.closed) {
             popup.location.href = created.approve_url
@@ -92,24 +121,15 @@ export function usePayPalCheckout() {
           } else {
             setPhase('blocked')
           }
-          approved = await waitForApproval(created.order_id, popup, cancelled)
+          capture = await captureWhenApproved(created.order_id, cancelled, returned)
         }
       } finally {
+        window.removeEventListener('message', onMessage)
         popup?.close()
-      }
-
-      if (!approved || cancelled.current) {
-        finish()
-        return { status: 'cancelled' }
-      }
-
-      setPhase('capturing')
-      try {
-        const capture = await api.captureOrder(created.order_id)
-        return { status: 'captured', capture }
-      } finally {
         finish()
       }
+
+      return capture && !cancelled.current ? { status: 'captured', capture } : { status: 'cancelled' }
     },
     [finish],
   )
@@ -141,7 +161,8 @@ export function usePayPalCheckout() {
                 Log in with the sandbox buyer account and approve the payment. This screen continues on its own.
               </p>
               <div className="skeleton mt-5 h-2 w-full rounded-full" />
-              <Button variant="secondary" className="mt-5 w-full" onClick={cancel}>
+              <p className="mt-3 text-xs text-muted">Closed the PayPal window by mistake? Cancel and try again.</p>
+              <Button variant="secondary" className="mt-3 w-full" onClick={cancel}>
                 Cancel
               </Button>
             </>
@@ -188,18 +209,26 @@ export function usePayPalCheckout() {
   return { checkout, dialog, busy: phase !== 'idle' }
 }
 
-async function waitForApproval(orderId: string, popup: Window | null, cancelled: { current: boolean }): Promise<boolean> {
+/** Retry capture until PayPal says the buyer approved. Returns null if cancelled or timed out. */
+async function captureWhenApproved(
+  orderId: string,
+  cancelled: { current: boolean },
+  returned: { current: 'approved' | 'cancel' | null },
+): Promise<CaptureResult | null> {
   const deadline = Date.now() + 10 * 60 * 1000
+  const stop = () => cancelled.current || returned.current !== null
+  await nap(1500, stop) // give the buyer a moment before the first try
   while (!cancelled.current && Date.now() < deadline) {
-    const popupClosed = popup ? popup.closed : false
-    const status = await api
-      .getOrder(orderId)
-      .then((o) => o.status)
-      .catch(() => null)
-    if (status === 'APPROVED' || status === 'COMPLETED') return true
-    // Popup closed without approval: that was one last check, so the buyer backed out.
-    if (popupClosed) return false
-    await sleep(2000)
+    if (returned.current === 'cancel') return null
+    try {
+      return await api.captureOrder(orderId)
+    } catch (e) {
+      // 409 NOT_APPROVED just means "not yet". Anything else is a real failure.
+      if (!(e instanceof ApiError && e.code === 'NOT_APPROVED')) throw e
+    }
+    await nap(2000, stop)
+    // after the return page reports approval, retry faster
+    if (returned.current === 'approved') await sleep(300)
   }
-  return false
+  return null
 }

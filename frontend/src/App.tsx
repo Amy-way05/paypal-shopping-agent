@@ -147,7 +147,7 @@ function StatusPill() {
   const { data, error, loading } = useAsync(() => api.health())
   if (USE_MOCKS) {
     return (
-      <span className="rounded-full bg-warn-soft px-3 py-1 text-xs font-semibold text-warn" title="Screens are using built-in sample data. Set VITE_USE_MOCKS=false to use the backend.">
+      <span className="rounded-full bg-pay-soft px-3 py-1 text-xs font-semibold text-pay-dark" title="Screens are using built-in sample data. Set VITE_USE_MOCKS=false to use the backend.">
         Sample data
       </span>
     )
@@ -162,7 +162,7 @@ function StatusPill() {
   }
   const ready = data.paypal_configured && data.gemini_configured
   return (
-    <span className={cx('rounded-full px-3 py-1 text-xs font-semibold', ready ? 'bg-save-soft text-save' : 'bg-warn-soft text-warn')} title={`PayPal ${data.paypal_configured ? 'configured' : 'not configured'}, Gemini ${data.gemini_configured ? 'configured' : 'not configured'}`}>
+    <span className={cx('rounded-full px-3 py-1 text-xs font-semibold', ready ? 'bg-save-soft text-save' : 'bg-warn-soft text-ink')} title={`PayPal ${data.paypal_configured ? 'configured' : 'not configured'}, Gemini ${data.gemini_configured ? 'configured' : 'not configured'}`}>
       {ready ? 'Live sandbox' : 'Backend needs keys'}
     </span>
   )

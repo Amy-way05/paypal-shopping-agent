@@ -16,6 +16,8 @@ export interface Health {
   paypal_env: string
   paypal_configured: boolean
   gemini_configured: boolean
+  gemini_models?: string[]
+  data_as_of?: string
 }
 
 // ---------- Savings ----------
@@ -37,7 +39,7 @@ export interface BreakdownCard {
 
 // The contract uses `delivery` / `refund` here but `delivery_delay` / `late_refund`
 // on Guardian alerts. We accept both until the backend picks one.
-export type ActionType = SavingsKind | 'delivery' | 'refund' | 'delivery_delay' | 'late_refund'
+export type ActionType = SavingsKind | 'delivery' | 'refund' | 'delivery_delay' | 'late_refund' | 'refund_recovered'
 export type ActionStatus = 'detected' | 'resolved' | 'recovered'
 
 export interface RecentAction {
@@ -64,6 +66,7 @@ export interface Savings {
     top_merchant: { merchant_name: string; amount: number } | null
     savings_rate_pct: number
   }
+  data_as_of?: string
   message?: string | null
 }
 
@@ -96,6 +99,7 @@ export interface BetterDealResponse {
   best_option: string | null
   potential_savings: number
   source: 'channel3' | 'local_catalog'
+  matched_product?: string | null // null = not in the catalog
   agent_pass: AgentPassDecision | null
   agent_message: string
   message?: string | null
@@ -118,7 +122,7 @@ export interface Goal {
   buyer_id: string
   product_name: string
   category: string
-  merchant_name: string
+  merchant_name: string | null
   target_price: number
   current_price: number
   best_coupon: { code: string; description: string; discount: number } | null
@@ -130,6 +134,7 @@ export interface Goal {
   progress_pct: number
   weeks_remaining: number
   status: GoalStatus
+  price_source?: 'catalog' | 'your_target' | 'demo_seed' | null
   price_history: { date: string; price: number }[]
   financing_options: FinancingOption[]
   credit_card_offer: {
@@ -224,6 +229,7 @@ export interface OrderCreated {
   payment_option: PaymentOption
   installment_plan: InstallmentPlan | null
   agent_pass: AgentPassDecision
+  paypal_mode?: 'sandbox' | 'simulated'
 }
 
 export interface OrderStatus {
@@ -240,6 +246,7 @@ export interface CaptureResult {
   amount: number
   saved: number
   message: string
+  paypal_mode?: 'sandbox' | 'simulated'
 }
 
 // ---------- Flow C: Guardian ----------
@@ -267,6 +274,8 @@ export interface GuardianAlert {
   recovery_method: 'paypal_refund' | 'simulated' | null
   paypal_reference: string | null
   detected_at: string
+  merchant_id?: string
+  delay_probability?: number
 }
 
 export interface ScanStarted {
@@ -294,7 +303,7 @@ export interface ClaimResult {
 
 // ---------- Merchant ----------
 export type RiskTier = 'high' | 'medium' | 'low'
-export type OfferStatus = 'sent' | 'redeemed' | 'ignored' | null
+export type OfferStatus = 'sent' | 'opened' | 'redeemed' | 'ignored' | null
 
 export interface ChurnRow {
   customer_id: string
@@ -308,6 +317,7 @@ export interface ChurnRow {
   offer_status: OfferStatus
   // Not in the contract yet. Needed to log an outcome after a reload.
   offer_id?: string | null
+  avg_order_value?: number
 }
 
 export interface CrossSellRow {
@@ -315,6 +325,7 @@ export interface CrossSellRow {
   product_b: string
   co_purchase_rate: number
   suggested_bundle_discount_pct: number
+  pair_count?: number
 }
 
 export interface MerchantDashboard {
@@ -330,7 +341,7 @@ export interface MerchantDashboard {
   }
   churn_risk: ChurnRow[]
   cross_sell: CrossSellRow[]
-  model_info: { churn_model: string; auc: number; note: string }
+  model_info: { churn_model: string; auc: number | null; precision?: number | null; recall?: number | null; note: string }
   message?: string | null
 }
 
@@ -346,9 +357,10 @@ export interface OfferSent {
   customer_name: string
   discount_pct: number
   message: string
-  message_source: 'gemini' | 'template'
+  message_source: string // Gemini model name, or 'template'
   invoice_id: string | null
-  invoice_status: string
+  invoice_status: string // SENT | SIMULATED | FAILED ...
+  invoice_error?: string | null
   sent_at: string
 }
 
@@ -367,17 +379,18 @@ export interface AgentToolCall {
 }
 
 export interface AgentCard {
-  type: 'better_deal' | 'order' | 'goal' | 'agent_pass' | 'savings' | 'scan'
+  type: 'better_deal' | 'order' | 'goal' | 'agent_pass' | 'savings' | 'scan' | 'guardian'
   data: unknown
 }
 
 export interface AgentChatResponse {
   session_id: string
   reply: string
-  reply_source: 'gemini' | 'template'
+  reply_source: string // Gemini model name, or 'template'
   tool_calls: AgentToolCall[]
   cards: AgentCard[]
-  pending_confirmation: { action: string; amount: number; reason: string } | null
+  // To confirm: POST /api/orders with `args` (it already has confirmed: true).
+  pending_confirmation: { tool: string; reason: string; args: CreateOrderRequest } | null
 }
 
 // ---------- Errors ----------

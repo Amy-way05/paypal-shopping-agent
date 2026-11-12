@@ -197,7 +197,7 @@ function GoalCard({ goal, onChanged }: { goal: Goal; onChanged: () => void }) {
         <div>
           <h2 className="font-display text-xl font-bold">{goal.product_name}</h2>
           <p className="text-sm text-muted">
-            {goal.merchant_name}, target {money(goal.target_price)}, {money(goal.weekly_amount)} a week
+            {goal.merchant_name ? `${goal.merchant_name}, ` : ''}target {money(goal.target_price)}, {money(goal.weekly_amount)} a week
           </p>
         </div>
         <Badge tone={st.tone}>{st.label}</Badge>
@@ -261,8 +261,8 @@ function GoalCard({ goal, onChanged }: { goal: Goal; onChanged: () => void }) {
       {!purchased && (
         <div className="space-y-4 border-t border-line bg-paper/60 p-5">
           {confirm ? (
-            <div className="flex flex-col gap-3 rounded-xl border border-warn/40 bg-warn-soft p-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm font-semibold text-warn">
+            <div className="flex flex-col gap-3 rounded-xl border border-pay/30 bg-pay-soft p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-semibold text-pay-dark">
                 Buy now? {goal.product_name} for {moneyExact(goal.final_price)}, {optionLabel(confirm)}.
               </p>
               <div className="flex gap-2">

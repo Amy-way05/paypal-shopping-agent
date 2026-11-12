@@ -21,9 +21,9 @@ const CHECKS: { type: AlertType; label: string }[] = [
 ]
 
 const STEPS: { status: ActionStatus; label: string }[] = [
-  { status: 'detected', label: 'Detected' },
-  { status: 'resolved', label: 'Action taken' },
-  { status: 'recovered', label: 'Recovered' },
+  { status: 'detected', label: 'Spotted' },
+  { status: 'resolved', label: 'We stepped in' },
+  { status: 'recovered', label: 'Money back' },
 ]
 
 export default function Guardian() {
@@ -125,11 +125,11 @@ export default function Guardian() {
       {/* Running counter */}
       <section className="grid gap-px overflow-hidden rounded-2xl bg-line sm:grid-cols-2" aria-label="Scan totals">
         <div className="bg-ink p-6 text-white">
-          <p className="text-sm font-semibold text-white/70">Recovered so far</p>
+          <p className="text-sm font-semibold text-white/70">Back in your pocket</p>
           <CountUp value={results?.total_recovered ?? 0} className="mt-1 block font-display text-5xl font-bold text-save-bright" duration={700} />
         </div>
         <div className="bg-white p-6">
-          <p className="text-sm font-semibold text-muted">Found to recover</p>
+          <p className="text-sm font-semibold text-muted">Found for you to get back</p>
           <CountUp value={results?.total_recoverable ?? 0} className="mt-1 block font-display text-5xl font-bold" duration={700} />
         </div>
       </section>
@@ -143,10 +143,10 @@ export default function Guardian() {
 
       {/* Activity feed */}
       <div>
-        <h2 className="mb-3 font-display text-xl font-bold">Activity</h2>
+        <h2 className="mb-3 font-display text-xl font-bold">What we found</h2>
         {status === 'idle' && (
           <Card>
-            <EmptyState icon="shield" title="No scan yet" body={results?.message ?? EMPTY.guardianIdle} />
+            <EmptyState icon="shield" title="Nothing scanned yet" body={results?.message ?? EMPTY.guardianIdle} />
           </Card>
         )}
         {running && alerts.length === 0 && (
@@ -182,7 +182,7 @@ function CheckTile({ label, type, state, scanning }: { label: string; type: Aler
       </span>
       <div>
         <p className="text-sm font-semibold">{label}</p>
-        <p className={cx('text-xs', done ? 'text-save' : 'text-muted', active && 'animate-pulse')}>{done ? 'Checked' : active ? 'Checking' : 'Waiting'}</p>
+        <p className={cx('text-xs', done ? 'text-save' : 'text-muted', active && 'animate-pulse')}>{done ? 'All checked' : active ? 'Checking now' : 'Up next'}</p>
       </div>
     </li>
   )
@@ -210,7 +210,7 @@ function AlertCard({ alert, claiming, onClaim }: { alert: GuardianAlert; claimin
               {money$ ? (
                 <p className={cx('font-display text-2xl font-bold', alert.status === 'recovered' ? 'text-save' : 'text-ink')}>{moneyExact(alert.recoverable_amount)}</p>
               ) : (
-                <Badge tone="slate">Time, not money</Badge>
+                <Badge tone="slate">Nothing to refund</Badge>
               )}
             </div>
             <p className="mt-2 text-sm">{alert.details}</p>
